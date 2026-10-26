@@ -1,0 +1,912 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_1",
+      "name": "INDFood Master Admin",
+      "phone": "9999999999",
+      "role": "admin",
+      "createdAt": "2026-10-24T12:00:00.000Z"
+    }
+  ],
+  "riders": [
+    {
+      "userId": "usr_rd_izfzo9",
+      "phone": "9174782706",
+      "name": "Raj Parmar",
+      "permanentRiderId": "INDF-RD-20E0E",
+      "kycStatus": "APPROVED",
+      "isOnline": true,
+      "walletBalance": 593.28,
+      "completedTrips": 12,
+      "createdAt": "2026-10-24T14:22:35.438Z",
+      "kycDocuments": {
+        "mobileNumber": "9174782706",
+        "aadhaarNumber": "579162211655",
+        "bikeNumber": "MP43EC3831",
+        "submittedAt": "2026-10-24T14:23:00.008Z"
+      },
+      "kycApprovedAt": "2026-10-24T14:23:27.663Z"
+    },
+    {
+      "userId": "usr_rd_3ad95g",
+      "phone": "9691401002",
+      "name": "Govind Chouhan",
+      "permanentRiderId": "INDF-RD-45AE8",
+      "kycStatus": "APPROVED",
+      "isOnline": true,
+      "walletBalance": 49.44,
+      "completedTrips": 1,
+      "createdAt": "2026-10-25T02:38:53.739Z",
+      "kycDocuments": {
+        "mobileNumber": "9691401002",
+        "aadhaarNumber": "404121150775",
+        "bikeNumber": "RJ19PS2034",
+        "submittedAt": "2026-10-25T02:39:08.419Z"
+      },
+      "kycApprovedAt": "2026-10-25T02:40:19.353Z"
+    }
+  ],
+  "restaurants": [
+    {
+      "id": "rest_mvmhqe0u",
+      "name": "Royal restaurant",
+      "phone": "7024926013",
+      "address": "Vitthal Mandir aalot",
+      "cuisine": "Biryani, sweets, chicken, leg piece",
+      "latitude": 28.6139,
+      "longitude": 77.209,
+      "commissionPercent": 15,
+      "isActive": true,
+      "menu": [
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "isVeg": true,
+          "category": "Main Course"
+        },
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "isVeg": true,
+          "category": "Main Course"
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "isVeg": true,
+          "category": "Main Course"
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "isVeg": true,
+          "category": "Main Course"
+        }
+      ],
+      "createdAt": "2026-10-24T14:25:03.104Z"
+    },
+    {
+      "id": "rest_mvnasddz",
+      "name": "Royal biryaani",
+      "phone": "9174782706",
+      "address": "Vitthal Mandir aalot",
+      "cuisine": "Veg& non veg",
+      "latitude": 28.6139,
+      "longitude": 77.209,
+      "commissionPercent": 15,
+      "isActive": true,
+      "menu": [
+        {
+          "id": "m_mvnat3te",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "isVeg": true,
+          "category": "Main Course"
+        }
+      ],
+      "createdAt": "2026-10-25T03:58:24.457Z",
+      "isOpen": true
+    }
+  ],
+  "shifts": [
+    {
+      "id": "shift_1",
+      "name": "Morning Breakfast",
+      "time": "07:30 AM - 11:00 AM",
+      "maxSlots": 15,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_2",
+      "name": "Lunch Peak Rush",
+      "time": "12:00 PM - 03:30 PM",
+      "maxSlots": 30,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_3",
+      "name": "Evening Snacks",
+      "time": "04:00 PM - 07:00 PM",
+      "maxSlots": 20,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_4",
+      "name": "Dinner Super Peak",
+      "time": "07:30 PM - 11:30 PM",
+      "maxSlots": 40,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_5",
+      "name": "Late Night Cravings",
+      "time": "11:30 PM - 03:00 AM",
+      "maxSlots": 10,
+      "bookedRiders": []
+    }
+  ],
+  "orders": [
+    {
+      "orderId": "ORD-VTXD4R",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrmJ4EY6BdFvTV",
+      "financials": {
+        "foodTotal": 199,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 273.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 169.15,
+        "ownerCommission": 29.85,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 54.66
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "4930",
+      "createdAt": "2026-10-24T14:27:34.949Z",
+      "acceptedAt": "2026-10-24T14:27:59.815Z",
+      "acceptedByRiderAt": "2026-10-24T14:28:36.031Z",
+      "ready_for_pickupAt": "2026-10-24T14:28:57.339Z",
+      "deliveredAt": "2026-10-24T14:29:10.319Z"
+    },
+    {
+      "orderId": "ORD-HGGSSN",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrmLXXiCrnb0kc",
+      "financials": {
+        "foodTotal": 797,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 871.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 677.45,
+        "ownerCommission": 119.55,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 144.36
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "1616",
+      "createdAt": "2026-10-24T14:29:55.383Z",
+      "acceptedAt": "2026-10-24T14:30:33.941Z",
+      "ready_for_pickupAt": "2026-10-24T14:30:46.018Z",
+      "acceptedByRiderAt": "2026-10-24T14:31:00.497Z",
+      "deliveredAt": "2026-10-24T14:31:14.095Z"
+    },
+    {
+      "orderId": "ORD-V4HBMF",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrnAHvIRVb1WN5",
+      "financials": {
+        "foodTotal": 199,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 273.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 169.15,
+        "ownerCommission": 29.85,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 54.66
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "1558",
+      "createdAt": "2026-10-24T15:17:57.889Z",
+      "acceptedAt": "2026-10-24T15:18:18.322Z",
+      "acceptedByRiderAt": "2026-10-24T15:18:33.578Z",
+      "deliveredAt": "2026-10-24T15:19:12.288Z"
+    },
+    {
+      "orderId": "ORD-9BH7FL",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrnCoAd2UTVCmz",
+      "financials": {
+        "foodTotal": 648,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 722.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 550.8,
+        "ownerCommission": 97.2,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 122.01
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "9205",
+      "createdAt": "2026-10-24T15:20:21.026Z",
+      "acceptedAt": "2026-10-24T15:20:35.802Z",
+      "acceptedByRiderAt": "2026-10-24T15:20:52.958Z",
+      "deliveredAt": "2026-10-25T01:55:14.851Z"
+    },
+    {
+      "orderId": "ORD-343606",
+      "customerId": "cust_demo",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_1",
+          "name": "Biryani",
+          "price": 200,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrxpxzLHn99HdJ",
+      "financials": {
+        "foodTotal": 200,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 274.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 170,
+        "ownerCommission": 30,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 54.81
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": null,
+      "pickupCode": "3606",
+      "deliveryOtp": "9438",
+      "createdAt": "2026-10-25T01:44:21.379Z",
+      "deliveredAt": "2026-10-25T01:44:33.044Z"
+    },
+    {
+      "orderId": "ORD-345299",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Trxtqn4ghDVnj2",
+      "financials": {
+        "foodTotal": 150,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 224.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 127.5,
+        "ownerCommission": 22.5,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 47.31
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "5299",
+      "deliveryOtp": "3633",
+      "createdAt": "2026-10-25T01:48:01.955Z",
+      "acceptedAt": "2026-10-25T01:48:24.115Z",
+      "acceptedByRiderAt": "2026-10-25T01:48:28.353Z",
+      "deliveredAt": "2026-10-25T01:55:11.263Z"
+    },
+    {
+      "orderId": "ORD-877705",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Try2RZoW5rC8bi",
+      "financials": {
+        "foodTotal": 498,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 572.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 423.3,
+        "ownerCommission": 74.7,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 99.51
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "7705",
+      "deliveryOtp": "9864",
+      "createdAt": "2026-10-25T01:56:10.064Z",
+      "acceptedAt": "2026-10-25T01:56:30.168Z",
+      "acceptedByRiderAt": "2026-10-25T01:56:38.032Z",
+      "deliveredAt": "2026-10-25T01:56:49.032Z"
+    },
+    {
+      "orderId": "ORD-912467",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TryQyI5gFjPUWH",
+      "financials": {
+        "foodTotal": 797,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 871.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 677.45,
+        "ownerCommission": 119.55,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 144.36
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "2467",
+      "deliveryOtp": "7636",
+      "createdAt": "2026-10-25T02:19:23.263Z",
+      "acceptedAt": "2026-10-25T02:19:36.508Z",
+      "acceptedByRiderAt": "2026-10-25T02:24:50.408Z",
+      "deliveredAt": "2026-10-25T02:24:55.169Z"
+    },
+    {
+      "orderId": "ORD-921059",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Trydy7hQqBD588",
+      "financials": {
+        "foodTotal": 797,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 871.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 677.45,
+        "ownerCommission": 119.55,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 144.36
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "1059",
+      "deliveryOtp": "5523",
+      "createdAt": "2026-10-25T02:31:41.477Z",
+      "acceptedAt": "2026-10-25T02:32:00.858Z",
+      "acceptedByRiderAt": "2026-10-25T02:32:15.906Z",
+      "deliveredAt": "2026-10-25T02:32:18.281Z"
+    },
+    {
+      "orderId": "ORD-189452",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_TrynmGPIeQ7YHs",
+      "financials": {
+        "foodTotal": 797,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 871.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 677.45,
+        "ownerCommission": 119.55,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 144.36
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_3ad95g",
+        "permanentRiderId": "INDF-RD-45AE8",
+        "name": "Govind Chouhan",
+        "phone": "9691401002",
+        "ratings": 5
+      },
+      "pickupCode": "9452",
+      "deliveryOtp": "5221",
+      "createdAt": "2026-10-25T02:40:58.626Z",
+      "acceptedAt": "2026-10-25T02:41:11.293Z",
+      "ready_for_pickupAt": "2026-10-25T02:42:42.585Z",
+      "acceptedByRiderAt": "2026-10-25T02:42:53.665Z",
+      "deliveredAt": "2026-10-25T02:43:06.859Z"
+    },
+    {
+      "orderId": "ORD-356621",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvnasddz",
+      "restaurantName": "Royal biryaani",
+      "items": [
+        {
+          "id": "m_mvnat3te",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Ts09NLLiqljfW4",
+      "financials": {
+        "foodTotal": 299,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 373.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 254.15,
+        "ownerCommission": 44.85,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 69.66
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "6621",
+      "deliveryOtp": "7545",
+      "createdAt": "2026-10-25T04:00:07.027Z",
+      "acceptedAt": "2026-10-25T04:00:21.858Z",
+      "acceptedByRiderAt": "2026-10-25T04:00:35.868Z",
+      "deliveredAt": "2026-10-25T04:01:21.180Z"
+    },
+    {
+      "orderId": "ORD-536291",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmhqe0u",
+      "restaurantName": "Royal restaurant",
+      "items": [
+        {
+          "id": "m_mvmhqup4",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhr9lb",
+          "name": "kadai paneer",
+          "price": 149,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhriez",
+          "name": "paneer do pyaza",
+          "price": 199,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmhrqci",
+          "name": "chicken tikka",
+          "price": 150,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Ts0CDYGKUKzaEw",
+      "financials": {
+        "foodTotal": 797,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 871.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 677.45,
+        "ownerCommission": 119.55,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 144.36
+      },
+      "orderStatus": "PLACED",
+      "assignedRider": null,
+      "pickupCode": "6291",
+      "deliveryOtp": "7101",
+      "createdAt": "2026-10-25T04:02:48.430Z"
+    },
+    {
+      "orderId": "ORD-388463",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvnasddz",
+      "restaurantName": "Royal biryaani",
+      "items": [
+        {
+          "id": "m_mvnat3te",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 2
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Ts0YscqalnvSfC",
+      "financials": {
+        "foodTotal": 598,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 672.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 508.3,
+        "ownerCommission": 89.7,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 114.51
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "8463",
+      "deliveryOtp": "8936",
+      "createdAt": "2026-10-25T04:24:15.659Z",
+      "acceptedAt": "2026-10-25T04:24:31.777Z",
+      "ready_for_pickupAt": "2026-10-25T04:25:58.003Z",
+      "acceptedByRiderAt": "2026-10-25T04:26:19.403Z",
+      "deliveredAt": "2026-10-25T04:26:49.290Z"
+    },
+    {
+      "orderId": "ORD-115192",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvnasddz",
+      "restaurantName": "Royal biryaani",
+      "items": [
+        {
+          "id": "m_mvnat3te",
+          "name": "Hyderabadi biryani",
+          "price": 299,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Ts1JGXVsW0O94c",
+      "financials": {
+        "foodTotal": 299,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 373.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 254.15,
+        "ownerCommission": 44.85,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 69.66
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-20E0E",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "pickupCode": "5192",
+      "deliveryOtp": "5275",
+      "createdAt": "2026-10-25T05:08:10.377Z",
+      "acceptedAt": "2026-10-25T05:08:32.689Z",
+      "acceptedByRiderAt": "2026-10-25T05:08:45.604Z",
+      "deliveredAt": "2026-10-25T05:10:16.884Z"
+    }
+  ],
+  "wallets": {
+    "owner": {
+      "totalRevenue": 7243.25,
+      "totalCommission": 941.7,
+      "totalPlatformFee": 104,
+      "totalDeliveryMargin": 218.53,
+      "netProfit": 1264.23
+    }
+  }
+}

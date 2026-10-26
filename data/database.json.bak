@@ -1,0 +1,274 @@
+{
+  "users": [
+    {
+      "id": "usr_admin_1",
+      "name": "INDFood Master Admin",
+      "phone": "9999999999",
+      "role": "admin",
+      "createdAt": "2026-10-24T12:03:34.667Z"
+    }
+  ],
+  "riders": [
+    {
+      "userId": "usr_rd_izfzo9",
+      "phone": "9174782706",
+      "name": "Raj Parmar",
+      "permanentRiderId": "INDF-RD-NTSUQ",
+      "kycStatus": "APPROVED",
+      "isOnline": true,
+      "walletBalance": 49.44,
+      "completedTrips": 1,
+      "createdAt": "2026-10-24T12:49:35.791Z",
+      "kycDocuments": {
+        "mobileNumber": "9174782706",
+        "aadhaarNumber": "579162211655",
+        "bikeNumber": "MP43EC3831",
+        "submittedAt": "2026-10-24T13:00:01.246Z"
+      },
+      "kycApprovedAt": "2026-10-24T13:03:09.370Z"
+    }
+  ],
+  "restaurants": [
+    {
+      "id": "rest_mvmcxtq8",
+      "name": "Hyderabadi restaurant",
+      "phone": "+919174782706",
+      "address": "Vitthal Mandir aalot",
+      "cuisine": "Fast food , chicken biryani",
+      "latitude": 28.6139,
+      "longitude": 77.209,
+      "commissionPercent": 15,
+      "isActive": true,
+      "menu": [
+        {
+          "id": "m_mvmcy9d9",
+          "name": "Hyderabadi biryani",
+          "price": 130,
+          "isVeg": true,
+          "category": "Main Course"
+        }
+      ],
+      "createdAt": "2026-10-24T12:10:51.968Z"
+    },
+    {
+      "id": "rest_mvmehj3f",
+      "name": "Munim Baba restaurant",
+      "phone": "7024926013",
+      "address": "Kargil Chauraha aalot",
+      "cuisine": "Veg and non veg",
+      "latitude": 28.6139,
+      "longitude": 77.209,
+      "commissionPercent": 15,
+      "isActive": true,
+      "menu": [
+        {
+          "id": "m_mvmei21h",
+          "name": "chicken tikka",
+          "price": 249,
+          "isVeg": true,
+          "category": "Main Course"
+        },
+        {
+          "id": "m_mvmeiwz0",
+          "name": "paneer 2 pyasa ",
+          "price": 199,
+          "isVeg": true,
+          "category": "Main Course"
+        },
+        {
+          "id": "m_mvmejz15",
+          "name": "zaika biryani",
+          "price": 159,
+          "isVeg": true,
+          "category": "Main Course"
+        }
+      ],
+      "createdAt": "2026-10-24T12:54:10.925Z"
+    }
+  ],
+  "shifts": [
+    {
+      "id": "shift_1",
+      "name": "Morning Breakfast",
+      "time": "07:30 AM - 11:00 AM",
+      "maxSlots": 15,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_2",
+      "name": "Lunch Peak Rush",
+      "time": "12:00 PM - 03:30 PM",
+      "maxSlots": 30,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_3",
+      "name": "Evening Snacks",
+      "time": "04:00 PM - 07:00 PM",
+      "maxSlots": 20,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_4",
+      "name": "Dinner Super Peak",
+      "time": "07:30 PM - 11:30 PM",
+      "maxSlots": 40,
+      "bookedRiders": []
+    },
+    {
+      "id": "shift_5",
+      "name": "Late Night Cravings",
+      "time": "11:30 PM - 03:00 AM",
+      "maxSlots": 10,
+      "bookedRiders": []
+    }
+  ],
+  "orders": [
+    {
+      "orderId": "ORD-02DEB0",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmcxtq8",
+      "restaurantName": "Hyderabadi restaurant",
+      "items": [
+        {
+          "id": "m_mvmcy9d9",
+          "name": "Hyderabadi biryani",
+          "price": 130,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Trk2I5kGfdyuxf",
+      "financials": {
+        "foodTotal": 130,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 204.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 110.5,
+        "ownerCommission": 19.5,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 44.31
+      },
+      "orderStatus": "ACCEPTED",
+      "assignedRider": null,
+      "deliveryOtp": "3509",
+      "createdAt": "2026-10-24T12:14:18.830Z",
+      "acceptedAt": "2026-10-24T12:27:43.338Z"
+    },
+    {
+      "orderId": "ORD-5GU0WZ",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmehj3f",
+      "restaurantName": "Munim Baba restaurant",
+      "items": [
+        {
+          "id": "m_mvmcy9d9",
+          "name": "Hyderabadi biryani",
+          "price": 130,
+          "quantity": 1
+        },
+        {
+          "id": "m_mvmejz15",
+          "name": "zaika biryani",
+          "price": 159,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Trkl6oq2UutimD",
+      "financials": {
+        "foodTotal": 289,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 363.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 245.65,
+        "ownerCommission": 43.35,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 68.16
+      },
+      "orderStatus": "ON_THE_WAY",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-NTSUQ",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "5841",
+      "createdAt": "2026-10-24T12:56:44.520Z",
+      "acceptedAt": "2026-10-24T12:59:01.458Z",
+      "ready_for_pickupAt": "2026-10-24T12:59:16.213Z",
+      "acceptedByRiderAt": "2026-10-24T13:50:10.457Z"
+    },
+    {
+      "orderId": "ORD-AA4QYJ",
+      "customerId": "cust_real_1",
+      "customerName": "Guest Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvmehj3f",
+      "restaurantName": "Munim Baba restaurant",
+      "items": [
+        {
+          "id": "m_mvmeiwz0",
+          "name": "paneer 2 pyasa ",
+          "price": 199,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Flat 204, Green Heights, Civil Lines",
+      "distanceKm": 4.9,
+      "paymentMethod": "ONLINE",
+      "paymentStatus": "PAID",
+      "razorpayOrderId": "order_Trlcy1Z8usp0UV",
+      "financials": {
+        "foodTotal": 199,
+        "distanceKm": 4.9,
+        "deliveryFee": 66.25,
+        "platformFee": 8,
+        "customerTotalPaid": 273.25,
+        "riderPayout": 49.44,
+        "restaurantEarning": 169.15,
+        "ownerCommission": 29.85,
+        "deliveryMargin": 16.81,
+        "ownerNetProfit": 54.66
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_rd_izfzo9",
+        "permanentRiderId": "INDF-RD-NTSUQ",
+        "name": "Raj Parmar",
+        "phone": "9174782706",
+        "ratings": 5
+      },
+      "deliveryOtp": "8983",
+      "createdAt": "2026-10-24T13:47:43.665Z",
+      "acceptedAt": "2026-10-24T13:47:55.344Z",
+      "acceptedByRiderAt": "2026-10-24T13:49:03.749Z",
+      "ready_for_pickupAt": "2026-10-24T13:49:29.991Z",
+      "deliveredAt": "2026-10-24T13:49:58.111Z"
+    }
+  ],
+  "wallets": {
+    "owner": {
+      "totalRevenue": 273.25,
+      "totalCommission": 29.85,
+      "totalPlatformFee": 8,
+      "totalDeliveryMargin": 16.81,
+      "netProfit": 54.66
+    }
+  }
+}
