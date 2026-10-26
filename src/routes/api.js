@@ -53,5 +53,7 @@ router.post('/restaurants/toggle-status', restaurantController.toggleRestaurantS
 router.get('/admin/dashboard', adminController.getDashboardStats);
 router.post('/admin/commission', adminController.updatePlatformCommission);
 router.post('/admin/reset-database', adminController.resetDatabase);
+router.get('/admin/rider-lookup', adminController.lookupRider);
+router.post('/admin/rider-toggle-block', adminController.toggleBlockRider);
 
 module.exports = router;

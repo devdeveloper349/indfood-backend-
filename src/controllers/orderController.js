@@ -26,8 +26,8 @@ async function createOrder(req, res) {
   try {
     const {
       customerId,
-      customerName = 'Guest Customer',
-      customerPhone = '9876543210',
+      customerName = 'Customer',
+      customerPhone,
       restaurantId,
       items, // array of { id, name, price, quantity }
       deliveryAddress,
@@ -40,6 +40,10 @@ async function createOrder(req, res) {
 
     if (!restaurantId || !items || !items.length) {
       return res.status(400).json({ success: false, message: 'Invalid order parameters: restaurant and items required' });
+    }
+
+    if (!customerPhone || customerPhone.toString().trim().length < 10) {
+      return res.status(400).json({ success: false, message: 'Customer ka 10-digit mobile number bharna anivarya hai' });
     }
 
     const db = readDb();
@@ -119,6 +123,7 @@ async function createOrder(req, res) {
       restaurantId,
       restaurantName: restaurant.name,
       restaurantAddress: restaurant.address || 'Restaurant Location',
+      restaurantPhone: restaurant.phone || '',
       restaurantLat: restaurant.latitude ? parseFloat(restaurant.latitude) : 28.6139,
       restaurantLng: restaurant.longitude ? parseFloat(restaurant.longitude) : 77.2090,
       items,
@@ -166,6 +171,13 @@ function getOrderDetails(req, res) {
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+  const rest = (db.restaurants || []).find(r => r.id === order.restaurantId);
+  if (rest) {
+    if (!order.restaurantAddress) order.restaurantAddress = rest.address || '';
+    if (!order.restaurantPhone) order.restaurantPhone = rest.phone || '';
+    if (!order.restaurantLat && rest.latitude) order.restaurantLat = parseFloat(rest.latitude);
+    if (!order.restaurantLng && rest.longitude) order.restaurantLng = parseFloat(rest.longitude);
   }
   return res.json({ success: true, order });
 }
@@ -259,6 +271,19 @@ function listOrders(req, res) {
       return true;
     });
   }
+
+  // Enrich orders with restaurant details if missing
+  const restaurantsMap = {};
+  (db.restaurants || []).forEach(r => { restaurantsMap[r.id] = r; });
+  filtered.forEach(o => {
+    const rest = restaurantsMap[o.restaurantId];
+    if (rest) {
+      if (!o.restaurantAddress) o.restaurantAddress = rest.address || '';
+      if (!o.restaurantPhone) o.restaurantPhone = rest.phone || '';
+      if (!o.restaurantLat && rest.latitude) o.restaurantLat = parseFloat(rest.latitude);
+      if (!o.restaurantLng && rest.longitude) o.restaurantLng = parseFloat(rest.longitude);
+    }
+  });
 
   return res.json({ success: true, orders: filtered.reverse() });
 }

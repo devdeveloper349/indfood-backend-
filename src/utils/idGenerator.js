@@ -2,18 +2,19 @@ const crypto = require('crypto');
 
 /**
  * Delivery Partner Permanent ID Generator
- * Generates an official, permanent, random alphanumeric ID
- * once KYC verification is officially approved by Admin.
- * Format: INDF-RD-XXXXX (e.g., INDF-RD-74921)
+ * Generates an official, permanent, random ID tied to rider's name + random numbers (total 10-12 chars)
+ * Example: devraj683992
  */
-function generatePermanentRiderId() {
-  const chars = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  let randomPart = '';
-  const randomBytes = crypto.randomBytes(5);
-  for (let i = 0; i < 5; i++) {
-    randomPart += chars[randomBytes[i] % chars.length];
-  }
-  return `INDF-RD-${randomPart}`;
+function generatePermanentRiderId(riderName) {
+  const cleanName = (riderName || 'rider')
+    .replace(/[^a-zA-Z]/g, '')
+    .toLowerCase()
+    .slice(0, 6) || 'rider';
+  const digitsNeeded = Math.max(4, 12 - cleanName.length);
+  const min = Math.pow(10, digitsNeeded - 1);
+  const max = Math.pow(10, digitsNeeded) - 1;
+  const randomNum = Math.floor(min + Math.random() * (max - min + 1));
+  return `${cleanName}${randomNum}`;
 }
 
 /**

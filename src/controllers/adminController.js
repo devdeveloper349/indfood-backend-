@@ -90,8 +90,73 @@ function resetDatabase(req, res) {
   return res.json({ success: true, message: 'All INDfood application data cleared successfully!' });
 }
 
+/**
+ * Admin searches delivery boy by Permanent ID, phone or name
+ * to inspect full identity, selfie photo, documents, and fraud history
+ */
+function lookupRider(req, res) {
+  const query = (req.query.q || req.query.riderId || '').toString().trim().toLowerCase();
+  if (!query) {
+    return res.status(400).json({ success: false, message: 'Please provide rider ID, phone or name to search' });
+  }
+
+  const db = readDb();
+  const rider = db.riders.find(r => 
+    (r.permanentRiderId && r.permanentRiderId.toLowerCase() === query) ||
+    (r.userId && r.userId.toLowerCase() === query) ||
+    (r.phone && r.phone.toLowerCase() === query) ||
+    (r.name && r.name.toLowerCase().includes(query)) ||
+    (r.panNumber && r.panNumber.toLowerCase() === query)
+  );
+
+  if (!rider) {
+    return res.status(404).json({ success: false, message: 'No delivery partner found with ID / phone: ' + query });
+  }
+
+  // Get rider's recent orders
+  const riderOrders = db.orders.filter(o => 
+    o.assignedRider && (
+      o.assignedRider.permanentRiderId === rider.permanentRiderId ||
+      o.assignedRider.userId === rider.userId ||
+      o.assignedRider.phone === rider.phone
+    )
+  ).slice(-10).reverse();
+
+  return res.json({
+    success: true,
+    rider,
+    orders: riderOrders
+  });
+}
+
+/**
+ * Admin blocks or unblocks rider for fraud / misbehavior
+ */
+function toggleBlockRider(req, res) {
+  const { riderId } = req.body;
+  const db = readDb();
+  const rider = db.riders.find(r => r.permanentRiderId === riderId || r.userId === riderId || r.phone === riderId);
+  if (!rider) {
+    return res.status(404).json({ success: false, message: 'Rider not found' });
+  }
+
+  rider.isBlocked = !rider.isBlocked;
+  if (rider.isBlocked) {
+    rider.isOnline = false;
+  }
+  writeDb(db);
+
+  return res.json({
+    success: true,
+    message: rider.isBlocked ? `Rider ${rider.name} (${rider.permanentRiderId}) has been BLOCKED/SUSPENDED.` : `Rider ${rider.name} has been ACTIVATED.`,
+    isBlocked: rider.isBlocked
+  });
+}
+
 module.exports = {
   getDashboardStats,
   updatePlatformCommission,
-  resetDatabase
+  resetDatabase,
+  lookupRider,
+  toggleBlockRider
 };

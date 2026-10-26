@@ -2,21 +2,58 @@ const { readDb, writeDb } = require('../models/db');
 const { generatePermanentRiderId } = require('../utils/idGenerator');
 
 /**
- * Rider submits simplified KYC:
- * 1. Mobile Number
- * 2. Aadhaar Number
- * 3. Bike Number
+ * Calculate exact age from Date of Birth
+ */
+function calculateAge(dobString) {
+  if (!dobString) return 0;
+  const birthDate = new Date(dobString);
+  if (isNaN(birthDate.getTime())) return 0;
+  const today = new Date();
+  let age = today.getFullYear() - birthDate.getFullYear();
+  const m = today.getMonth() - birthDate.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < birthDate.getDate())) {
+    age--;
+  }
+  return age;
+}
+
+/**
+ * Rider registers / submits KYC:
+ * 1. Selfie Photo
+ * 2. Full Name
+ * 3. Mobile Number
+ * 4. PAN Card Number (Identity check)
+ * 5. Date of Birth (Age check: must be 18+)
+ * 6. Bike / Vehicle Number
  */
 function submitKyc(req, res) {
-  const { userId, name, mobileNumber, phone, aadhaarNumber, bikeNumber, vehicleNumber } = req.body;
+  const { userId, name, mobileNumber, phone, panNumber, aadhaarNumber, dob, selfiePhoto, bikeNumber, vehicleNumber } = req.body;
+  const riderName = (name || '').trim();
   const riderPhone = (mobileNumber || phone || '').toString().trim();
+  const riderPan = (panNumber || aadhaarNumber || '').toString().trim().toUpperCase();
+  const riderDob = (dob || '').toString().trim();
   const riderBike = (bikeNumber || vehicleNumber || '').toString().trim().toUpperCase();
-  const riderAadhaar = (aadhaarNumber || '').toString().trim();
+  const riderSelfie = (selfiePhoto || '').toString().trim();
 
-  if (!riderPhone || !riderAadhaar || !riderBike) {
+  if (!riderName) {
+    return res.status(400).json({ success: false, message: 'Kripya apna Poora Naam dalein' });
+  }
+  if (!riderPhone || riderPhone.length < 10) {
+    return res.status(400).json({ success: false, message: '10-digit mobile number bharna anivarya hai' });
+  }
+  if (!riderPan || riderPan.length < 8) {
+    return res.status(400).json({ success: false, message: 'Valid PAN Card number bharna anivarya hai (e.g. ABCDE1234F)' });
+  }
+  if (!riderDob) {
+    return res.status(400).json({ success: false, message: 'Kripya Janm Tithi (Date of Birth) select karein' });
+  }
+
+  // 18+ Age verification
+  const age = calculateAge(riderDob);
+  if (age < 18) {
     return res.status(400).json({
       success: false,
-      message: 'Mobile Number, Aadhaar Number, and Bike Number are required'
+      message: `Aapki umar 18 saal se kam hai (${age} saal). Shram kanoon aur INDFood policy ke anusaar delivery partner banne ke liye 18+ hona anivarya hai!`
     });
   }
 
@@ -28,9 +65,9 @@ function submitKyc(req, res) {
     rider = {
       userId: uid,
       phone: riderPhone,
-      name: name || 'Delivery Partner',
+      name: riderName,
       permanentRiderId: null,
-      kycStatus: 'SUBMITTED',
+      kycStatus: 'APPROVED',
       isOnline: true,
       walletBalance: 0,
       completedTrips: 0,
@@ -40,17 +77,35 @@ function submitKyc(req, res) {
   }
 
   rider.phone = riderPhone;
-  rider.name = name || rider.name || 'Delivery Partner';
-  if (!rider.permanentRiderId) {
-    rider.kycStatus = 'SUBMITTED';
-  } else {
-    rider.kycStatus = 'APPROVED';
+  rider.name = riderName;
+  rider.panNumber = riderPan;
+  rider.dob = riderDob;
+  rider.age = age;
+  rider.bikeNumber = riderBike || rider.bikeNumber || 'BIKE-REG';
+  if (riderSelfie) {
+    rider.selfiePhoto = riderSelfie;
   }
+  rider.isBlocked = rider.isBlocked || false;
+
+  // Auto-generate official 12-char permanent ID tied to their name (e.g., devraj683992)
+  if (!rider.permanentRiderId) {
+    let newId = generatePermanentRiderId(rider.name);
+    while (db.riders.some(r => r.permanentRiderId === newId)) {
+      newId = generatePermanentRiderId(rider.name);
+    }
+    rider.permanentRiderId = newId;
+  }
+
+  rider.kycStatus = 'APPROVED';
+  rider.kycApprovedAt = new Date().toISOString();
 
   rider.kycDocuments = {
     mobileNumber: riderPhone,
-    aadhaarNumber: riderAadhaar,
-    bikeNumber: riderBike,
+    panNumber: riderPan,
+    dob: riderDob,
+    age: age,
+    bikeNumber: rider.bikeNumber,
+    hasSelfie: Boolean(rider.selfiePhoto),
     submittedAt: new Date().toISOString()
   };
 
@@ -58,7 +113,8 @@ function submitKyc(req, res) {
 
   return res.json({
     success: true,
-    message: 'KYC submitted successfully (Mobile, Aadhaar & Bike Number). Awaiting Admin Approval.',
+    message: `KYC & 18+ Identity Verified! Permanent Delivery Partner ID: ${rider.permanentRiderId}`,
+    permanentRiderId: rider.permanentRiderId,
     rider
   });
 }
@@ -97,11 +153,11 @@ function approveKyc(req, res) {
     return res.status(404).json({ success: false, message: 'Rider profile not found' });
   }
 
-  // Generate permanent, unique, random ID only if not already assigned
+  // Generate permanent, unique, random ID tied to rider's name
   if (!rider.permanentRiderId) {
-    let newId = generatePermanentRiderId();
+    let newId = generatePermanentRiderId(rider.name);
     while (db.riders.some(r => r.permanentRiderId === newId)) {
-      newId = generatePermanentRiderId();
+      newId = generatePermanentRiderId(rider.name);
     }
     rider.permanentRiderId = newId;
   }

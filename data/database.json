@@ -13,7 +13,7 @@
       "userId": "usr_rd_xnxu3e",
       "phone": "9174782706",
       "name": "Divyansh Parmar",
-      "permanentRiderId": "INDF-RD-S481V",
+      "permanentRiderId": "divyan749201",
       "kycStatus": "APPROVED",
       "isOnline": true,
       "walletBalance": 197.76,
@@ -25,7 +25,11 @@
         "bikeNumber": "MP43EC3831",
         "submittedAt": "2026-10-25T13:25:15.262Z"
       },
-      "kycApprovedAt": "2026-10-25T13:25:22.559Z"
+      "kycApprovedAt": "2026-10-25T13:25:22.559Z",
+      "panNumber": "ABCDE1234F",
+      "dob": "2001-05-15",
+      "age": 25,
+      "bikeNumber": "MP09AB1234"
     }
   ],
   "restaurants": [
@@ -187,7 +191,7 @@
       "orderStatus": "DELIVERED",
       "assignedRider": {
         "userId": "usr_rd_xnxu3e",
-        "permanentRiderId": "INDF-RD-S481V",
+        "permanentRiderId": "divyan749201",
         "name": "Divyansh Parmar",
         "phone": "9174782706",
         "ratings": 5
@@ -200,10 +204,14 @@
       "estimatedReadyAt": "2026-10-26T03:27:08.139Z",
       "targetedRiderId": "usr_rd_xnxu3e",
       "targetedRiderName": "Divyansh Parmar",
-      "targetedRiderPermanentId": "INDF-RD-S481V",
+      "targetedRiderPermanentId": "divyan749201",
       "targetedRiderExpiresAt": 1792984373140,
       "acceptedByRiderAt": "2026-10-26T03:12:33.720Z",
-      "deliveredAt": "2026-10-26T03:13:36.794Z"
+      "deliveredAt": "2026-10-26T03:13:36.794Z",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 28.6139,
+      "restaurantLng": 77.209
     },
     {
       "orderId": "ORD-289069",
@@ -264,7 +272,7 @@
       "orderStatus": "DELIVERED",
       "assignedRider": {
         "userId": "usr_rd_xnxu3e",
-        "permanentRiderId": "INDF-RD-S481V",
+        "permanentRiderId": "divyan749201",
         "name": "Divyansh Parmar",
         "phone": "9174782706",
         "ratings": 5
@@ -277,12 +285,16 @@
       "estimatedReadyAt": "2026-10-26T03:55:48.645Z",
       "targetedRiderId": "usr_rd_xnxu3e",
       "targetedRiderName": "Divyansh Parmar",
-      "targetedRiderPermanentId": "INDF-RD-S481V",
+      "targetedRiderPermanentId": "divyan749201",
       "targetedRiderExpiresAt": 1792984612357,
       "ready_for_pickupAt": "2026-10-26T03:15:57.408Z",
       "rejectedRiderIds": [],
       "acceptedByRiderAt": "2026-10-26T03:16:10.569Z",
-      "deliveredAt": "2026-10-26T03:16:16.738Z"
+      "deliveredAt": "2026-10-26T03:16:16.738Z",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 28.6139,
+      "restaurantLng": 77.209
     },
     {
       "orderId": "ORD-923499",
@@ -343,7 +355,7 @@
       "orderStatus": "DELIVERED",
       "assignedRider": {
         "userId": "usr_rd_xnxu3e",
-        "permanentRiderId": "INDF-RD-S481V",
+        "permanentRiderId": "divyan749201",
         "name": "Divyansh Parmar",
         "phone": "9174782706",
         "ratings": 5
@@ -354,10 +366,14 @@
       "acceptedAt": "2026-10-26T03:17:52.522Z",
       "targetedRiderId": "usr_rd_xnxu3e",
       "targetedRiderName": "Divyansh Parmar",
-      "targetedRiderPermanentId": "INDF-RD-S481V",
+      "targetedRiderPermanentId": "divyan749201",
       "targetedRiderExpiresAt": 1792984717522,
       "acceptedByRiderAt": "2026-10-26T03:18:14.876Z",
-      "deliveredAt": "2026-10-26T03:18:20.878Z"
+      "deliveredAt": "2026-10-26T03:18:20.878Z",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 28.6139,
+      "restaurantLng": 77.209
     },
     {
       "orderId": "ORD-516712",
@@ -406,7 +422,7 @@
       "orderStatus": "DELIVERED",
       "assignedRider": {
         "userId": "usr_rd_xnxu3e",
-        "permanentRiderId": "INDF-RD-S481V",
+        "permanentRiderId": "divyan749201",
         "name": "Divyansh Parmar",
         "phone": "9174782706",
         "ratings": 5
@@ -417,11 +433,15 @@
       "acceptedAt": "2026-10-26T06:22:27.060Z",
       "targetedRiderId": "usr_rd_xnxu3e",
       "targetedRiderName": "Divyansh Parmar",
-      "targetedRiderPermanentId": "INDF-RD-S481V",
+      "targetedRiderPermanentId": "divyan749201",
       "targetedRiderExpiresAt": 1792995792060,
       "ready_for_pickupAt": "2026-10-26T06:22:34.937Z",
       "acceptedByRiderAt": "2026-10-26T06:22:42.825Z",
-      "deliveredAt": "2026-10-26T06:24:43.164Z"
+      "deliveredAt": "2026-10-26T06:24:43.164Z",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 28.6139,
+      "restaurantLng": 77.209
     },
     {
       "orderId": "ORD-669159",
@@ -458,7 +478,7 @@
       "orderStatus": "ON_THE_WAY",
       "assignedRider": {
         "userId": "usr_rd_xnxu3e",
-        "permanentRiderId": "INDF-RD-S481V",
+        "permanentRiderId": "divyan749201",
         "name": "Divyansh Parmar",
         "phone": "9174782706",
         "ratings": 5
@@ -471,9 +491,13 @@
       "estimatedReadyAt": "2026-10-26T06:52:21.788Z",
       "targetedRiderId": "usr_rd_xnxu3e",
       "targetedRiderName": "Divyansh Parmar",
-      "targetedRiderPermanentId": "INDF-RD-S481V",
+      "targetedRiderPermanentId": "divyan749201",
       "targetedRiderExpiresAt": 1792996086788,
-      "acceptedByRiderAt": "2026-10-26T06:27:47.209Z"
+      "acceptedByRiderAt": "2026-10-26T06:27:47.209Z",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 28.6139,
+      "restaurantLng": 77.209
     }
   ],
   "wallets": {
