@@ -73,7 +73,15 @@ app.use((req, res, next) => {
 // Mount API routes
 app.use('/api', apiRoutes);
 
-// Health check
+// Health check & Root routes for Render Cloud
+app.get('/', (req, res) => {
+  res.json({
+    status: 'ONLINE',
+    service: 'INDFood Master Backend',
+    timestamp: new Date().toISOString()
+  });
+});
+
 app.get('/health', (req, res) => {
   res.json({
     status: 'ONLINE',
