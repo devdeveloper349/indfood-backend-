@@ -3,6 +3,22 @@ const { generateOrderId, generateDeliveryOtp } = require('../utils/idGenerator')
 const { calculateOrderFinancials } = require('../utils/pricingEngine');
 const razorpay = require('../config/razorpay');
 
+function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
+  if (lat1 === undefined || lat1 === null || lon1 === undefined || lon1 === null ||
+      lat2 === undefined || lat2 === null || lon2 === undefined || lon2 === null) {
+    return 2.5;
+  }
+  const R = 6371; // Earth radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  const dist = R * c;
+  return Math.max(0.5, Math.round(dist * 10) / 10);
+}
+
 /**
  * Customer creates an order
  */
@@ -14,8 +30,10 @@ async function createOrder(req, res) {
       customerPhone = '9876543210',
       restaurantId,
       items, // array of { id, name, price, quantity }
-      deliveryAddress = 'Flat 204, Green Heights, Civil Lines',
-      distanceKm = 4.9, // default or calculated via GPS
+      deliveryAddress,
+      customerLat,
+      customerLng,
+      distanceKm,
       paymentMethod = 'ONLINE', // 'ONLINE' or 'COD'
       isRainSurge = false
     } = req.body;
@@ -30,13 +48,26 @@ async function createOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Restaurant not found' });
     }
 
+    // Dynamic distance calculation based on REAL GPS
+    let actualDistanceKm = 2.5;
+    if (customerLat !== undefined && customerLng !== undefined && restaurant.latitude && restaurant.longitude) {
+      actualDistanceKm = calculateHaversineDistanceKm(
+        parseFloat(restaurant.latitude),
+        parseFloat(restaurant.longitude),
+        parseFloat(customerLat),
+        parseFloat(customerLng)
+      );
+    } else if (distanceKm && !isNaN(parseFloat(distanceKm)) && parseFloat(distanceKm) > 0) {
+      actualDistanceKm = Math.round(parseFloat(distanceKm) * 10) / 10;
+    }
+
     // Calculate food subtotal
     const foodTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
-    // Calculate exact financial split (Commission, Delivery Fee, Rider Payout, Owner Profit)
+    // Calculate exact financial split (Commission, Delivery Fee, Rider Payout, Owner Profit) based on actual KM
     const financials = calculateOrderFinancials({
       foodTotal,
-      distanceKm,
+      distanceKm: actualDistanceKm,
       commissionPercent: restaurant.commissionPercent || 15,
       isRainSurge
     });
@@ -80,9 +111,14 @@ async function createOrder(req, res) {
       customerPhone,
       restaurantId,
       restaurantName: restaurant.name,
+      restaurantAddress: restaurant.address || 'Restaurant Location',
+      restaurantLat: restaurant.latitude ? parseFloat(restaurant.latitude) : 28.6139,
+      restaurantLng: restaurant.longitude ? parseFloat(restaurant.longitude) : 77.2090,
       items,
-      deliveryAddress,
-      distanceKm,
+      deliveryAddress: deliveryAddress || 'Customer Location',
+      customerLat: customerLat ? parseFloat(customerLat) : null,
+      customerLng: customerLng ? parseFloat(customerLng) : null,
+      distanceKm: actualDistanceKm,
       paymentMethod,
       paymentStatus: paymentMethod === 'ONLINE' ? 'PAID' : 'COD_PENDING',
       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,

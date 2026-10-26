@@ -43,6 +43,7 @@ router.post('/payment/verify', paymentController.verifyPayment);
 // 6. Restaurant routes
 router.get('/restaurants', restaurantController.getAllRestaurants);
 router.post('/restaurants/register', restaurantController.registerRestaurant);
+router.post('/restaurants/update-location', restaurantController.updateRestaurantLocation);
 router.get('/restaurants/:id', restaurantController.getRestaurantById);
 router.post('/restaurants/menu', restaurantController.addMenuItem);
 router.post('/restaurants/menu/toggle', restaurantController.toggleItemAvailability);

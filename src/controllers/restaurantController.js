@@ -17,13 +17,16 @@ function getRestaurantById(req, res) {
 }
 
 function registerRestaurant(req, res) {
-  const { name, phone, address, cuisine = 'North Indian, Snacks' } = req.body;
+  const { name, phone, address, cuisine = 'North Indian, Snacks', latitude, longitude } = req.body;
   if (!name || !phone) {
     return res.status(400).json({ success: false, message: 'Restaurant name and phone are required' });
   }
 
   const db = readDb();
   let rest = db.restaurants.find(r => r.phone === phone);
+  const lat = (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) ? parseFloat(latitude) : 28.6139;
+  const lng = (longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude))) ? parseFloat(longitude) : 77.2090;
+
   if (!rest) {
     const id = `rest_${Date.now().toString(36)}`;
     rest = {
@@ -32,8 +35,8 @@ function registerRestaurant(req, res) {
       phone,
       address: address || 'Main Market, City Center',
       cuisine,
-      latitude: 28.6139,
-      longitude: 77.2090,
+      latitude: lat,
+      longitude: lng,
       commissionPercent: 15,
       isActive: true,
       isOpen: true,
@@ -42,9 +45,36 @@ function registerRestaurant(req, res) {
     };
     db.restaurants.push(rest);
     writeDb(db);
+  } else {
+    // Update existing restaurant location and details if supplied
+    if (address) rest.address = address;
+    if (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) rest.latitude = lat;
+    if (longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude))) rest.longitude = lng;
+    if (cuisine) rest.cuisine = cuisine;
+    writeDb(db);
   }
 
   return res.json({ success: true, message: 'Restaurant registered successfully!', restaurant: rest });
+}
+
+function updateRestaurantLocation(req, res) {
+  const { restaurantId, latitude, longitude, address } = req.body;
+  const db = readDb();
+  const rest = db.restaurants.find(r => r.id === restaurantId);
+  if (!rest) return res.status(404).json({ success: false, message: 'Restaurant not found' });
+
+  if (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) {
+    rest.latitude = parseFloat(latitude);
+  }
+  if (longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude))) {
+    rest.longitude = parseFloat(longitude);
+  }
+  if (address) {
+    rest.address = address;
+  }
+  writeDb(db);
+
+  return res.json({ success: true, message: 'Restaurant location updated successfully!', restaurant: rest });
 }
 
 function addMenuItem(req, res) {
@@ -110,6 +140,7 @@ module.exports = {
   getAllRestaurants,
   getRestaurantById,
   registerRestaurant,
+  updateRestaurantLocation,
   addMenuItem,
   toggleItemAvailability,
   toggleRestaurantStatus
