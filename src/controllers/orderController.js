@@ -51,12 +51,19 @@ async function createOrder(req, res) {
     // Dynamic distance calculation based on REAL GPS
     let actualDistanceKm = 2.5;
     if (customerLat !== undefined && customerLng !== undefined && restaurant.latitude && restaurant.longitude) {
-      actualDistanceKm = calculateHaversineDistanceKm(
+      const calcDist = calculateHaversineDistanceKm(
         parseFloat(restaurant.latitude),
         parseFloat(restaurant.longitude),
         parseFloat(customerLat),
         parseFloat(customerLng)
       );
+      if (calcDist <= 35) {
+        actualDistanceKm = calcDist;
+      } else if (distanceKm && !isNaN(parseFloat(distanceKm)) && parseFloat(distanceKm) > 0 && parseFloat(distanceKm) <= 35) {
+        actualDistanceKm = Math.round(parseFloat(distanceKm) * 10) / 10;
+      } else {
+        actualDistanceKm = 3.5;
+      }
     } else if (distanceKm && !isNaN(parseFloat(distanceKm)) && parseFloat(distanceKm) > 0) {
       actualDistanceKm = Math.round(parseFloat(distanceKm) * 10) / 10;
     }
