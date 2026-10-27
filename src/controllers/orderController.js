@@ -253,6 +253,7 @@ function listOrders(req, res) {
 
   if (req.query.availableForRider === 'true') {
     const currentRiderId = req.query.riderUserId || req.query.riderId;
+    const currentRiderPhone = req.query.riderPhone;
     let modified = false;
     db.orders.forEach(o => {
       if (['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus) && !o.assignedRider) {
@@ -263,8 +264,23 @@ function listOrders(req, res) {
     if (modified) writeDb(db);
 
     filtered = filtered.filter(o => {
+      // 1. Keep active trips assigned to THIS rider (so active order never disappears when navigating or backing!)
+      if (o.assignedRider) {
+        const matchesId = currentRiderId && (
+          o.assignedRider.permanentRiderId === currentRiderId ||
+          o.assignedRider.userId === currentRiderId ||
+          o.assignedRider.phone === currentRiderId
+        );
+        const matchesPhone = currentRiderPhone && (
+          o.assignedRider.phone === currentRiderPhone
+        );
+        if (matchesId || matchesPhone) {
+          return ['ACCEPTED_BY_RIDER', 'AT_RESTAURANT', 'HANDED_OVER', 'ON_THE_WAY'].includes(o.orderStatus);
+        }
+      }
+
+      // 2. Otherwise keep available unassigned radar orders targeted to this rider
       if (!['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus) || o.assignedRider) return false;
-      // If targeted to someone else, do not show in other riders' radar list
       if (currentRiderId && o.targetedRiderId && o.targetedRiderId !== currentRiderId && o.targetedRiderPermanentId !== currentRiderId) {
         return false;
       }
