@@ -176,6 +176,40 @@ function approveKyc(req, res) {
 }
 
 /**
+ * Rider Login with registered mobile number
+ */
+function riderLogin(req, res) {
+  const { phone } = req.body;
+  if (!phone || phone.toString().trim().length < 10) {
+    return res.status(400).json({ success: false, message: '10-digit mobile number bharna anivarya hai' });
+  }
+  const cleanPhone = phone.toString().trim().replace(/\D/g, '').slice(-10);
+  const db = readDb();
+  const rider = (db.riders || []).find(r => (r.phone && r.phone.toString().replace(/\D/g, '').slice(-10) === cleanPhone));
+
+  if (!rider) {
+    return res.status(404).json({
+      success: false,
+      message: 'Mobile number registered nahi hai! Kripya pehle New Delivery Partner Registration karein.'
+    });
+  }
+
+  if (rider.isBlocked) {
+    return res.status(403).json({
+      success: false,
+      message: 'Aapka account block kar diya gaya hai. Kripya INDFood Support/Admin se sampark karein.'
+    });
+  }
+
+  return res.json({
+    success: true,
+    message: `Swagat hai ${rider.name}! Login safal raha.`,
+    rider,
+    permanentRiderId: rider.permanentRiderId
+  });
+}
+
+/**
  * Admin rejects Rider KYC
  */
 function rejectKyc(req, res) {
@@ -210,6 +244,7 @@ function getPendingKycList(req, res) {
 module.exports = {
   submitKyc,
   getRiderStatus,
+  riderLogin,
   approveKyc,
   rejectKyc,
   getPendingKycList

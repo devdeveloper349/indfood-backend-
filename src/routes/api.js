@@ -13,8 +13,9 @@ const adminController = require('../controllers/adminController');
 router.post('/auth/login', authController.loginOrRegister);
 router.get('/auth/profile/:userId', authController.getUserProfile);
 
-// 2. KYC routes (Delivery Partner)
+// 2. KYC & Rider Auth routes (Delivery Partner)
 router.post('/kyc/submit', kycController.submitKyc);
+router.post('/rider/login', kycController.riderLogin);
 router.get('/kyc/status', kycController.getRiderStatus);
 router.post('/kyc/approve', kycController.approveKyc); // generates permanent random ID (INDF-RD-XXXXX)
 router.post('/kyc/reject', kycController.rejectKyc);
@@ -32,6 +33,9 @@ router.get('/orders', orderController.listOrders);
 router.get('/orders/:orderId', orderController.getOrderDetails);
 router.post('/orders/status', orderController.updateOrderStatus);
 router.post('/orders/accept-rider', orderController.riderAcceptOrder);
+router.post('/orders/arrive-restaurant', orderController.riderArriveRestaurant);
+router.post('/orders/handover', orderController.restaurantConfirmHandover);
+router.post('/orders/pickup', orderController.riderPickupOrder);
 router.post('/orders/reject-rider', orderController.riderRejectOrder);
 router.post('/orders/deliver', orderController.completeDelivery);
 router.post('/orders/verify-otp', orderController.verifyDeliveryOtp);

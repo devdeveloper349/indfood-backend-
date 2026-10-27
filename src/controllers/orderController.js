@@ -197,7 +197,7 @@ function dispatchRadarRider(order, db) {
   // Active riders with current uncompleted trips
   const busyRiderIds = new Set();
   db.orders.forEach(o => {
-    if (['ON_THE_WAY', 'ACCEPTED_BY_RIDER'].includes(o.orderStatus) && o.assignedRider) {
+    if (['ON_THE_WAY', 'ACCEPTED_BY_RIDER', 'AT_RESTAURANT', 'HANDED_OVER'].includes(o.orderStatus) && o.assignedRider) {
       busyRiderIds.add(o.assignedRider.userId);
       busyRiderIds.add(o.assignedRider.permanentRiderId);
     }
@@ -384,14 +384,89 @@ function riderAcceptOrder(req, res) {
     phone: rider.phone,
     ratings: rider.ratings || 5.0
   };
-  order.orderStatus = 'ON_THE_WAY';
+  order.orderStatus = 'ACCEPTED_BY_RIDER';
   order.acceptedByRiderAt = new Date().toISOString();
+  order.riderArrivedAtRestaurant = false;
+  order.foodHandedOver = false;
 
   writeDb(db);
 
   return res.json({
     success: true,
     message: `Order assigned to Delivery Partner ${rider.permanentRiderId}`,
+    order
+  });
+}
+
+/**
+ * Rider arrives at restaurant (within 100 meters or verified)
+ * Unlocks the secret Order ID so rider can tell the restaurant staff
+ */
+function riderArriveRestaurant(req, res) {
+  const { orderId, riderUserId } = req.body;
+  const db = readDb();
+  const order = db.orders.find(o => o.orderId === orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  order.orderStatus = 'AT_RESTAURANT';
+  order.riderArrivedAtRestaurant = true;
+  order.riderArrivedAt = new Date().toISOString();
+
+  writeDb(db);
+
+  return res.json({
+    success: true,
+    message: 'Rider arrived at restaurant. Order ID unlocked!',
+    order
+  });
+}
+
+/**
+ * Restaurant confirms the Order ID and hands over food to rider
+ */
+function restaurantConfirmHandover(req, res) {
+  const { orderId } = req.body;
+  const db = readDb();
+  const order = db.orders.find(o => o.orderId === orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  order.foodHandedOver = true;
+  order.handedOverAt = new Date().toISOString();
+  order.orderStatus = 'HANDED_OVER';
+
+  writeDb(db);
+
+  return res.json({
+    success: true,
+    message: 'Food handover confirmed to Delivery Partner!',
+    order
+  });
+}
+
+/**
+ * Rider confirms food pickup from restaurant -> Navigation to customer begins
+ */
+function riderPickupOrder(req, res) {
+  const { orderId, riderUserId } = req.body;
+  const db = readDb();
+  const order = db.orders.find(o => o.orderId === orderId);
+  if (!order) {
+    return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  order.orderStatus = 'ON_THE_WAY';
+  order.foodHandedOver = true;
+  order.pickedUpAt = new Date().toISOString();
+
+  writeDb(db);
+
+  return res.json({
+    success: true,
+    message: 'Order picked up! Navigation to Customer active.',
     order
   });
 }
@@ -467,6 +542,9 @@ module.exports = {
   listOrders,
   updateOrderStatus,
   riderAcceptOrder,
+  riderArriveRestaurant,
+  restaurantConfirmHandover,
+  riderPickupOrder,
   riderRejectOrder,
   completeDelivery,
   verifyDeliveryOtp
