@@ -60,6 +60,10 @@ io.on('connection', (socket) => {
     io.emit('global_order_update', data);
   });
 
+  socket.on('broadcast_promocode', (data) => {
+    io.emit('promocode_splash', data);
+  });
+
   socket.on('disconnect', () => {
     // disconnected
   });
@@ -95,4 +99,13 @@ const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 INDFood Backend Server running on http://0.0.0.0:${PORT}`);
   console.log(`💳 Razorpay Gateway Initialized with Key: ${process.env.RAZORPAY_KEY_ID}`);
+
+  // Self-Ping Keep-Alive: Prevents Render free instance from sleeping
+  const https = require('https');
+  const RENDER_URL = process.env.RENDER_EXTERNAL_URL || 'https://indfood-backend-la4k.onrender.com';
+  setInterval(() => {
+    https.get(`${RENDER_URL}/health`, (res) => {
+      // server warm
+    }).on('error', () => {});
+  }, 8 * 60 * 1000); // ping every 8 mins
 });

@@ -24,6 +24,7 @@ const defaultData = {
     { id: 'shift_5', name: 'Late Night Cravings', time: '11:30 PM - 03:00 AM', maxSlots: 10, bookedRiders: [] }
   ],
   orders: [],
+  promocodes: [],
   wallets: {
     owner: {
       totalRevenue: 0,
@@ -49,7 +50,13 @@ function readDb() {
   ensureDbFile();
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    return JSON.parse(raw);
+    const parsed = JSON.parse(raw);
+    parsed.promocodes = parsed.promocodes || [];
+    parsed.users = parsed.users || [];
+    parsed.riders = parsed.riders || [];
+    parsed.restaurants = parsed.restaurants || [];
+    parsed.orders = parsed.orders || [];
+    return parsed;
   } catch (e) {
     return defaultData;
   }

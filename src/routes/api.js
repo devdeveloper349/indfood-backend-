@@ -8,6 +8,7 @@ const orderController = require('../controllers/orderController');
 const paymentController = require('../controllers/paymentController');
 const restaurantController = require('../controllers/restaurantController');
 const adminController = require('../controllers/adminController');
+const promoController = require('../controllers/promoController');
 
 // 1. Auth routes
 router.post('/auth/login', authController.loginOrRegister);
@@ -39,6 +40,14 @@ router.post('/orders/pickup', orderController.riderPickupOrder);
 router.post('/orders/reject-rider', orderController.riderRejectOrder);
 router.post('/orders/deliver', orderController.completeDelivery);
 router.post('/orders/verify-otp', orderController.verifyDeliveryOtp);
+router.post('/orders/rider-location', orderController.updateRiderLocation);
+
+// 4b. Promo Code & Flash Discount routes
+router.post('/promocodes/broadcast', promoController.broadcastPromoCode);
+router.get('/promocodes/active', promoController.getActivePromoCodes);
+router.get('/promocodes/admin', promoController.getAllPromoCodesAdmin);
+router.post('/promocodes/apply', promoController.applyPromoCode);
+router.post('/promocodes/toggle', promoController.togglePromoStatus);
 
 // 5. Razorpay Payment routes
 router.get('/payment/key', paymentController.getRazorpayKey);

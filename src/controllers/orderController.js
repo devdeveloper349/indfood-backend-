@@ -35,7 +35,10 @@ async function createOrder(req, res) {
       customerLng,
       distanceKm,
       paymentMethod = 'ONLINE', // 'ONLINE' or 'COD'
-      isRainSurge = false
+      isRainSurge = false,
+      promoCode,
+      cookingInstructions,
+      deliveryInstructions
     } = req.body;
 
     if (!restaurantId || !items || !items.length) {
@@ -82,6 +85,26 @@ async function createOrder(req, res) {
       commissionPercent: restaurant.commissionPercent || 15,
       isRainSurge
     });
+
+    // Check & apply single-use Promo Code if supplied
+    let promoDiscount = 0;
+    let appliedPromoCode = null;
+    if (promoCode) {
+      const cleanCode = promoCode.toString().trim().toUpperCase();
+      const promo = (db.promocodes || []).find(p => p.code === cleanCode && p.active !== false);
+      if (promo) {
+        promo.usedBy = promo.usedBy || [];
+        const phoneClean = customerPhone ? customerPhone.toString().trim() : '';
+        if (!promo.usedBy.includes(phoneClean) && (!promo.minOrder || foodTotal >= promo.minOrder)) {
+          promoDiscount = Math.min(promo.discount, financials.customerTotalPaid);
+          financials.customerTotalPaid = Math.max(0, financials.customerTotalPaid - promoDiscount);
+          financials.promoDiscount = promoDiscount;
+          financials.promoCode = cleanCode;
+          appliedPromoCode = cleanCode;
+          promo.usedBy.push(phoneClean);
+        }
+      }
+    }
 
     const orderId = generateOrderId();
     const deliveryOtp = generateDeliveryOtp();
@@ -137,6 +160,12 @@ async function createOrder(req, res) {
       financials,
       orderStatus: 'PLACED', // PLACED, ACCEPTED, PREPARING, READY_FOR_PICKUP, ON_THE_WAY, DELIVERED, CANCELLED
       assignedRider: null,
+      riderLat: null,
+      riderLng: null,
+      cookingInstructions: cookingInstructions || '',
+      deliveryInstructions: deliveryInstructions || '',
+      promoCode: appliedPromoCode || null,
+      promoDiscount: promoDiscount || 0,
       pickupCode,
       deliveryOtp,
       createdAt: new Date().toISOString()
@@ -144,6 +173,11 @@ async function createOrder(req, res) {
 
     db.orders.push(newOrder);
     writeDb(db);
+
+    if (req.io) {
+      req.io.emit('new_order_restaurant', newOrder);
+      req.io.emit('global_order_update', newOrder);
+    }
 
     return res.json({
       success: true,
@@ -552,6 +586,65 @@ function verifyDeliveryOtp(req, res) {
   return completeDelivery(req, res);
 }
 
+/**
+ * Update live rider location coordinates
+ */
+function updateRiderLocation(req, res) {
+  try {
+    const { orderId, riderUserId, latitude, longitude } = req.body;
+    if (latitude === undefined || longitude === undefined) {
+      return res.status(400).json({ success: false, message: 'Latitude and Longitude required' });
+    }
+    const db = readDb();
+    let updatedOrder = null;
+    const lat = parseFloat(latitude);
+    const lng = parseFloat(longitude);
+
+    if (orderId) {
+      const order = db.orders.find(o => o.orderId === orderId);
+      if (order) {
+        order.riderLat = lat;
+        order.riderLng = lng;
+        order.riderLocationUpdatedAt = new Date().toISOString();
+        updatedOrder = order;
+      }
+    }
+
+    if (riderUserId) {
+      const rider = db.riders.find(r => r.userId === riderUserId || r.permanentRiderId === riderUserId || r.phone === riderUserId);
+      if (rider) {
+        rider.latitude = lat;
+        rider.longitude = lng;
+        rider.lastLocationUpdate = new Date().toISOString();
+      }
+    }
+
+    writeDb(db);
+
+    if (req.io) {
+      if (orderId) {
+        req.io.to(`order_${orderId}`).emit('rider_position', {
+          orderId,
+          latitude: lat,
+          longitude: lng,
+          riderUserId,
+          updatedAt: new Date().toISOString()
+        });
+      }
+      req.io.emit('rider_location_broadcast', {
+        orderId,
+        riderUserId,
+        latitude: lat,
+        longitude: lng
+      });
+    }
+
+    return res.json({ success: true, message: 'Rider location updated', order: updatedOrder });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
 module.exports = {
   createOrder,
   getOrderDetails,
@@ -563,5 +656,6 @@ module.exports = {
   riderPickupOrder,
   riderRejectOrder,
   completeDelivery,
-  verifyDeliveryOtp
+  verifyDeliveryOtp,
+  updateRiderLocation
 };
