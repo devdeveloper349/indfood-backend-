@@ -1,15 +1,47 @@
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
 const { readDb, writeDb } = require('../models/db');
 const { generatePermanentRiderId } = require('../utils/idGenerator');
 
 // In-memory OTP storage with 10-minute expiry
 const otpStore = new Map(); // key: email, value: { otp, expiresAt, purpose }
 
+// Google Gmail SMTP Real Transporter
+const emailUser = process.env.EMAIL_USER || 'devrajparmar349@gmail.com';
+const emailPass = (process.env.EMAIL_PASS || 'kpqhdkfoqjypncay').replace(/\s+/g, '');
+const mailTransporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: emailUser,
+    pass: emailPass
+  }
+});
+
+/**
+ * Send branded HTML email from "IND food"
+ */
+async function sendIndFoodEmail({ to, subject, html, text }) {
+  try {
+    const info = await mailTransporter.sendMail({
+      from: `"IND food" <${emailUser}>`,
+      to,
+      subject,
+      text,
+      html
+    });
+    console.log(`✅ [Real Gmail SMTP] Email delivered to ${to} (MessageId: ${info.messageId})`);
+    return { success: true, messageId: info.messageId };
+  } catch (err) {
+    console.error(`⚠️ [Gmail SMTP Error] Could not send to ${to}:`, err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 /**
  * Send Email OTP under "IND food" Brand
  */
-function sendEmailOtp(req, res) {
+async function sendEmailOtp(req, res) {
   try {
     const { email, purpose = 'register' } = req.body;
     if (!email || !email.includes('@')) {
@@ -32,10 +64,52 @@ function sendEmailOtp(req, res) {
     console.log(`Expires in: 10 minutes`);
     console.log(`======================================================\n`);
 
+    const htmlContent = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 20px; background-color: #F8FAFC; }
+        .card { max-width: 480px; margin: 0 auto; background: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.08); border: 2px solid #F97316; }
+        .header { background: linear-gradient(135deg, #FF6B00 0%, #EA580C 100%); padding: 30px 20px; text-align: center; color: white; }
+        .content { padding: 30px 24px; text-align: center; color: #1E293B; }
+        .otp-box { background: #FFF7ED; border: 2px dashed #F97316; border-radius: 14px; padding: 18px 24px; font-size: 36px; font-weight: 900; letter-spacing: 8px; color: #EA580C; margin: 24px 0; display: inline-block; }
+        .footer { font-size: 12px; color: #94A3B8; text-align: center; padding: 0 20px 24px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="header">
+          <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: -0.5px;">IND food</h1>
+          <p style="margin: 6px 0 0; font-size: 13px; font-weight: 700; opacity: 0.95;">Official Verification Service</p>
+        </div>
+        <div class="content">
+          <h2 style="margin: 0 0 10px; font-size: 20px; font-weight: 800; color: #0F172A;">Your Verification Code</h2>
+          <p style="margin: 0; font-size: 14px; color: #64748B;">Enter this 6-digit code in the IND food application to verify your account:</p>
+          <div class="otp-box">${otp}</div>
+          <p style="margin: 0; font-size: 13px; font-weight: 700; color: #DC2626;">Valid for 10 minutes only. Do not share this OTP with anyone.</p>
+        </div>
+        <div class="footer">
+          <p style="margin: 0;">Sent by IND food • Bringing delicious meals right to your doorstep</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    // Asynchronously dispatch real email (does not block client)
+    sendIndFoodEmail({
+      to: cleanEmail,
+      subject: `[IND food] ${otp} is your verification code`,
+      text: `Your IND food verification code is: ${otp}. Valid for 10 minutes.`,
+      html: htmlContent
+    }).catch(err => console.error('SMTP async error:', err));
+
     return res.json({
       success: true,
       message: `IND food ki taraf se verification code ${cleanEmail} par bhej diya gaya hai!`,
-      otp, // included for foolproof testing & instant filling
+      otp, // included for seamless autofill & testing
       brand: 'IND food'
     });
   } catch (err) {
@@ -87,7 +161,7 @@ function verifyOtp(req, res) {
  */
 function registerUser(req, res) {
   try {
-    const { name, phone, email, password, role = 'customer' } = req.body;
+    let { name, phone, email, password, role = 'customer' } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ success: false, message: 'Aapka Naam bharna zaroori hai!' });
@@ -97,9 +171,6 @@ function registerUser(req, res) {
     }
     if (!email || !email.includes('@')) {
       return res.status(400).json({ success: false, message: 'Valid Google / Email ID zaroori hai!' });
-    }
-    if (!password || password.length < 4) {
-      return res.status(400).json({ success: false, message: 'Password kam se kam 4 aksharon ka hona chahiye!' });
     }
 
     const cleanEmail = email.toLowerCase().trim();
@@ -111,36 +182,31 @@ function registerUser(req, res) {
     db.riders = db.riders || [];
     db.restaurants = db.restaurants || [];
 
-    // Check if user already exists with this email or phone
-    let existingByEmail = db.users.find(u => u.email === cleanEmail);
-    if (existingByEmail) {
-      return res.status(400).json({
-        success: false,
-        message: 'Yeh Google / Email ID pehle se registered hai! Kripya Login karein ya Forgot Password use karein.'
-      });
-    }
-
-    let existingByPhone = db.users.find(u => u.phone === cleanPhone);
-    if (existingByPhone) {
-      return res.status(400).json({
-        success: false,
-        message: `Yeh Mobile Number (+91 ${cleanPhone}) pehle se doosre account se juda hai! Kripya naya number dalein ya Login karein.`
-      });
-    }
-
+    const effectivePass = (password && password.length >= 4) ? password : (cleanPhone.slice(-6) || 'indfood123');
     const salt = bcrypt.genSaltSync(10);
-    const hashedPassword = bcrypt.hashSync(password, salt);
+    const hashedPassword = bcrypt.hashSync(effectivePass, salt);
 
-    const user = {
-      id: `usr_${uuidv4().substring(0, 8)}`,
-      name: cleanName,
-      phone: cleanPhone,
-      email: cleanEmail,
-      password: hashedPassword,
-      role,
-      createdAt: new Date().toISOString()
-    };
-    db.users.push(user);
+    // If already registered with this email, simply update & log in!
+    let user = db.users.find(u => u.email === cleanEmail);
+    if (user) {
+      user.name = cleanName;
+      user.phone = cleanPhone;
+      user.role = role;
+      if (password && password.length >= 4) {
+        user.password = hashedPassword;
+      }
+    } else {
+      user = {
+        id: `usr_${uuidv4().substring(0, 8)}`,
+        name: cleanName,
+        phone: cleanPhone,
+        email: cleanEmail,
+        password: hashedPassword,
+        role,
+        createdAt: new Date().toISOString()
+      };
+      db.users.push(user);
+    }
 
     // Role-specific setup
     let rider = null;
@@ -207,7 +273,9 @@ function registerUser(req, res) {
 
     return res.json({
       success: true,
-      message: 'Account successfully register ho gaya! Kripya Email aur Password se Login karein.',
+      message: role === 'rider'
+        ? `Swagat hai ${user.name}! Unique Partner ID: ${rider?.permanentRiderId}`
+        : `Swagat hai ${user.name}! Registration safal raha.`,
       user: {
         id: user.id,
         name: user.name,
@@ -216,6 +284,7 @@ function registerUser(req, res) {
         role: user.role
       },
       rider,
+      permanentRiderId: rider ? rider.permanentRiderId : null,
       restaurant,
       token: `jwt_token_${user.id}_${Date.now()}`
     });
@@ -493,6 +562,34 @@ function forgotPassword(req, res) {
     console.log(`Subject: IND food Password Reset Code`);
     console.log(`Reset Code: [ ${otp} ]`);
     console.log(`======================================================\n`);
+
+    const resetHtml = `
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"></head>
+    <body style="font-family:sans-serif; margin:0; padding:20px; background:#F8FAFC;">
+      <div style="max-width:480px; margin:0 auto; background:white; border-radius:20px; overflow:hidden; border:2px solid #EA580C; box-shadow:0 10px 30px rgba(0,0,0,0.08);">
+        <div style="background:linear-gradient(135deg, #FF6B00 0%, #EA580C 100%); padding:25px; text-align:center; color:white;">
+          <h1 style="margin:0; font-size:24px; font-weight:900;">IND food</h1>
+          <p style="margin:4px 0 0; font-size:12px; font-weight:700;">Password Reset Request</p>
+        </div>
+        <div style="padding:25px; text-align:center;">
+          <h2 style="margin:0 0 10px; font-size:18px;">Password Reset Code</h2>
+          <p style="margin:0; font-size:13px; color:#64748B;">Use this OTP code to set a new password on IND food:</p>
+          <div style="background:#FFF7ED; border:2px dashed #EA580C; border-radius:12px; padding:16px; font-size:32px; font-weight:900; letter-spacing:6px; color:#EA580C; margin:20px 0; display:inline-block;">${otp}</div>
+          <p style="margin:0; font-size:12px; color:#DC2626; font-weight:700;">Valid for 10 minutes. If you did not request this, please ignore.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+    `;
+
+    sendIndFoodEmail({
+      to: cleanEmail,
+      subject: `[IND food] ${otp} is your password reset code`,
+      text: `Your IND food password reset code is: ${otp}`,
+      html: resetHtml
+    }).catch(err => console.error('Reset SMTP async error:', err));
 
     return res.json({
       success: true,

@@ -282,7 +282,7 @@ function listOrders(req, res) {
 
   if (customerId) filtered = filtered.filter(o => o.customerId === customerId);
   if (restaurantId) filtered = filtered.filter(o => o.restaurantId === restaurantId);
-  if (riderId) filtered = filtered.filter(o => o.assignedRider && (o.assignedRider.permanentRiderId === riderId || o.assignedRider.userId === riderId));
+  if (riderId && req.query.availableForRider !== 'true') filtered = filtered.filter(o => o.assignedRider && (o.assignedRider.permanentRiderId === riderId || o.assignedRider.userId === riderId));
   if (status) filtered = filtered.filter(o => o.orderStatus === status);
 
   if (req.query.availableForRider === 'true') {
@@ -407,7 +407,8 @@ function riderRejectOrder(req, res) {
  * Rider accepts and picks up order
  */
 function riderAcceptOrder(req, res) {
-  const { orderId, riderUserId } = req.body;
+  const { orderId } = req.body;
+  const riderUserId = req.body.riderUserId || req.body.riderId || req.body.permanentRiderId;
   const db = readDb();
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
@@ -453,7 +454,8 @@ function riderAcceptOrder(req, res) {
  * Unlocks the secret Order ID so rider can tell the restaurant staff
  */
 function riderArriveRestaurant(req, res) {
-  const { orderId, riderUserId } = req.body;
+  const { orderId } = req.body;
+  const riderUserId = req.body.riderUserId || req.body.riderId || req.body.permanentRiderId;
   const db = readDb();
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
@@ -501,7 +503,8 @@ function restaurantConfirmHandover(req, res) {
  * Rider confirms food pickup from restaurant -> Navigation to customer begins
  */
 function riderPickupOrder(req, res) {
-  const { orderId, riderUserId } = req.body;
+  const { orderId } = req.body;
+  const riderUserId = req.body.riderUserId || req.body.riderId || req.body.permanentRiderId;
   const db = readDb();
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
