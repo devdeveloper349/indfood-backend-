@@ -288,14 +288,6 @@ function listOrders(req, res) {
   if (req.query.availableForRider === 'true') {
     const currentRiderId = req.query.riderUserId || req.query.riderId;
     const currentRiderPhone = req.query.riderPhone;
-    let modified = false;
-    db.orders.forEach(o => {
-      if (['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus) && !o.assignedRider) {
-        dispatchRadarRider(o, db);
-        modified = true;
-      }
-    });
-    if (modified) writeDb(db);
 
     filtered = filtered.filter(o => {
       // 1. Keep active trips assigned to THIS rider (so active order never disappears when navigating or backing!)
@@ -311,14 +303,41 @@ function listOrders(req, res) {
         if (matchesId || matchesPhone) {
           return ['ACCEPTED_BY_RIDER', 'AT_RESTAURANT', 'HANDED_OVER', 'ON_THE_WAY'].includes(o.orderStatus);
         }
+        return false;
       }
 
-      // 2. Otherwise keep available unassigned radar orders targeted to this rider
-      if (!['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus) || o.assignedRider) return false;
-      if (currentRiderId && o.targetedRiderId && o.targetedRiderId !== currentRiderId && o.targetedRiderPermanentId !== currentRiderId) {
+      // 2. Otherwise keep available unassigned orders accepted by restaurant (or ready for pickup)
+      if (!['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus)) return false;
+      
+      // If rejected by this rider, don't show
+      const rejected = o.rejectedRiderIds || [];
+      if (currentRiderId && (rejected.includes(currentRiderId) || (currentRiderPhone && rejected.includes(currentRiderPhone)))) {
         return false;
       }
       return true;
+    });
+
+    // Enrich orders with restaurant details if missing
+    const restaurantsMap = {};
+    (db.restaurants || []).forEach(r => { restaurantsMap[r.id] = r; });
+    filtered.forEach(o => {
+      const rest = restaurantsMap[o.restaurantId];
+      if (rest) {
+        if (!o.restaurantAddress) o.restaurantAddress = rest.address || '';
+        if (!o.restaurantPhone) o.restaurantPhone = rest.phone || '';
+        if (!o.restaurantLat && rest.latitude) o.restaurantLat = parseFloat(rest.latitude);
+        if (!o.restaurantLng && rest.longitude) o.restaurantLng = parseFloat(rest.longitude);
+      }
+    });
+
+    const activeOrderForRider = filtered.find(o => o.assignedRider);
+    const availableOrders = filtered.filter(o => !o.assignedRider && ['ACCEPTED', 'PREPARING', 'READY_FOR_PICKUP'].includes(o.orderStatus));
+
+    return res.json({
+      success: true,
+      orders: [...filtered].reverse(),
+      availableOrders: [...availableOrders].reverse(),
+      activeOrderForRider: activeOrderForRider || null
     });
   }
 
@@ -367,6 +386,12 @@ function updateOrderStatus(req, res) {
   }
 
   writeDb(db);
+
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('new_order_available_rider', order);
+    req.io.emit('global_order_update', order);
+  }
 
   return res.json({
     success: true,
