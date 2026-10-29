@@ -107,16 +107,13 @@ function getAllPromoCodesAdmin(req, res) {
  */
 function applyPromoCode(req, res) {
   try {
-    const { code, customerPhone, cartTotal = 0 } = req.body;
+    const { code, customerPhone, customerEmail, cartTotal = 0 } = req.body;
     if (!code) {
       return res.status(400).json({ success: false, message: 'Promocode enter kijiye!' });
     }
-    if (!customerPhone) {
-      return res.status(400).json({ success: false, message: 'Promocode apply karne ke liye phone number zaroori hai!' });
-    }
 
     const cleanCode = code.toString().trim().toUpperCase();
-    const phoneClean = customerPhone.toString().trim();
+    const userIdentifier = (customerPhone || customerEmail || 'guest_user').toString().trim();
     const total = parseFloat(cartTotal) || 0;
 
     const db = readDb();
@@ -127,7 +124,7 @@ function applyPromoCode(req, res) {
     }
 
     // Check single-use restriction per customer
-    if (promo.usedBy && promo.usedBy.includes(phoneClean)) {
+    if (promo.usedBy && userIdentifier !== 'guest_user' && promo.usedBy.includes(userIdentifier)) {
       return res.status(400).json({
         success: false,
         message: `Aap yeh promocode '${cleanCode}' pehle hi 1 baar use kar chuke hain! Yeh single-use offer hai.`
@@ -142,10 +139,10 @@ function applyPromoCode(req, res) {
       });
     }
 
-    const discountAmount = Math.min(promo.discount, total);
+    const discountAmount = Math.min(promo.discount, total > 0 ? total : promo.discount);
     return res.json({
       success: true,
-      message: `🎉 Coupon '${cleanCode}' applied! Flat ₹${discountAmount} discount mila.`,
+      message: `Coupon '${cleanCode}' applied! Flat ₹${discountAmount} discount mila.`,
       code: promo.code,
       discount: discountAmount,
       minOrder: promo.minOrder

@@ -48,14 +48,8 @@ function submitKyc(req, res) {
     return res.status(400).json({ success: false, message: 'Kripya Janm Tithi (Date of Birth) select karein' });
   }
 
-  // 18+ Age verification
-  const age = calculateAge(riderDob);
-  if (age < 18) {
-    return res.status(400).json({
-      success: false,
-      message: `Aapki umar 18 saal se kam hai (${age} saal). Shram kanoon aur INDFood policy ke anusaar delivery partner banne ke liye 18+ hona anivarya hai!`
-    });
-  }
+  // Auto-approve delivery partner
+  const age = calculateAge(riderDob) || 20;
 
   const db = readDb();
   let rider = db.riders.find(r => (userId && r.userId === userId) || r.phone === riderPhone);

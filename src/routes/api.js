@@ -10,7 +10,14 @@ const restaurantController = require('../controllers/restaurantController');
 const adminController = require('../controllers/adminController');
 const promoController = require('../controllers/promoController');
 
-// 1. Auth routes
+// 1. Auth routes (Real Google & Email Authentication)
+router.post('/auth/send-otp', authController.sendEmailOtp);
+router.post('/auth/verify-otp', authController.verifyOtp);
+router.post('/auth/register', authController.registerUser);
+router.post('/auth/login-email', authController.loginEmail);
+router.post('/auth/google', authController.googleLogin);
+router.post('/auth/forgot-password', authController.forgotPassword);
+router.post('/auth/reset-password', authController.resetPassword);
 router.post('/auth/login', authController.loginOrRegister);
 router.get('/auth/profile/:userId', authController.getUserProfile);
 

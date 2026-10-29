@@ -95,6 +95,23 @@ app.get('/health', (req, res) => {
   });
 });
 
+// Catch-all 404 handler - Returns valid JSON, never HTML
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `API Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+// Global Error Handler - Returns valid JSON, never HTML
+app.use((err, req, res, next) => {
+  console.error('Express Error Handler:', err);
+  res.status(err.status || 500).json({
+    success: false,
+    message: err.message || 'Internal Server Error'
+  });
+});
+
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 INDFood Backend Server running on http://0.0.0.0:${PORT}`);

@@ -17,24 +17,29 @@ function getRestaurantById(req, res) {
 }
 
 function registerRestaurant(req, res) {
-  const { name, phone, address, cuisine = 'North Indian, Snacks', latitude, longitude } = req.body;
+  const { name, phone, address, cuisine = 'North Indian, Snacks', latitude, longitude, ownerEmail } = req.body;
   if (!name || !phone) {
     return res.status(400).json({ success: false, message: 'Restaurant name and phone are required' });
   }
 
+  const cleanPhone = phone.toString().trim().replace(/\D/g, '').slice(-10);
   const db = readDb();
-  let rest = db.restaurants.find(r => r.phone === phone);
-  const lat = (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) ? parseFloat(latitude) : 28.6139;
-  const lng = (longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude))) ? parseFloat(longitude) : 77.2090;
+  let rest = db.restaurants.find(r => r.phone === cleanPhone || (ownerEmail && r.ownerEmail === ownerEmail));
+  
+  const hasValidLat = latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude));
+  const hasValidLng = longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude));
+  const lat = hasValidLat ? parseFloat(latitude) : null;
+  const lng = hasValidLng ? parseFloat(longitude) : null;
 
   if (!rest) {
     const id = `rest_${Date.now().toString(36)}`;
     rest = {
       id,
-      name,
-      phone,
-      address: address || 'Main Market, City Center',
-      cuisine,
+      name: name.trim(),
+      phone: cleanPhone,
+      ownerEmail: ownerEmail || '',
+      address: address ? address.trim() : 'Location not set yet',
+      cuisine: cuisine.trim(),
       latitude: lat,
       longitude: lng,
       commissionPercent: 15,
@@ -46,11 +51,13 @@ function registerRestaurant(req, res) {
     db.restaurants.push(rest);
     writeDb(db);
   } else {
-    // Update existing restaurant location and details if supplied
-    if (address) rest.address = address;
-    if (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) rest.latitude = lat;
-    if (longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude))) rest.longitude = lng;
-    if (cuisine) rest.cuisine = cuisine;
+    // Update existing restaurant with custom owner details
+    rest.name = name.trim();
+    if (address) rest.address = address.trim();
+    if (hasValidLat) rest.latitude = lat;
+    if (hasValidLng) rest.longitude = lng;
+    if (cuisine) rest.cuisine = cuisine.trim();
+    if (ownerEmail) rest.ownerEmail = ownerEmail;
     writeDb(db);
   }
 

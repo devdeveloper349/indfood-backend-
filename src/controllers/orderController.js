@@ -147,8 +147,8 @@ async function createOrder(req, res) {
       restaurantName: restaurant.name,
       restaurantAddress: restaurant.address || 'Restaurant Location',
       restaurantPhone: restaurant.phone || '',
-      restaurantLat: restaurant.latitude ? parseFloat(restaurant.latitude) : 28.6139,
-      restaurantLng: restaurant.longitude ? parseFloat(restaurant.longitude) : 77.2090,
+      restaurantLat: restaurant.latitude ? parseFloat(restaurant.latitude) : (customerLat ? parseFloat(customerLat) : null),
+      restaurantLng: restaurant.longitude ? parseFloat(restaurant.longitude) : (customerLng ? parseFloat(customerLng) : null),
       items,
       deliveryAddress: deliveryAddress || 'Customer Location',
       customerLat: customerLat ? parseFloat(customerLat) : null,
@@ -591,7 +591,8 @@ function verifyDeliveryOtp(req, res) {
  */
 function updateRiderLocation(req, res) {
   try {
-    const { orderId, riderUserId, latitude, longitude } = req.body;
+    const { orderId, riderUserId, riderId, latitude, longitude } = req.body;
+    const effectiveRiderId = riderUserId || riderId;
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ success: false, message: 'Latitude and Longitude required' });
     }
@@ -610,8 +611,8 @@ function updateRiderLocation(req, res) {
       }
     }
 
-    if (riderUserId) {
-      const rider = db.riders.find(r => r.userId === riderUserId || r.permanentRiderId === riderUserId || r.phone === riderUserId);
+    if (effectiveRiderId) {
+      const rider = db.riders.find(r => r.userId === effectiveRiderId || r.permanentRiderId === effectiveRiderId || r.phone === effectiveRiderId);
       if (rider) {
         rider.latitude = lat;
         rider.longitude = lng;
