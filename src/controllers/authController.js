@@ -437,7 +437,7 @@ function loginEmail(req, res) {
  */
 function googleLogin(req, res) {
   try {
-    const { email, name, role = 'customer', phone = '' } = req.body;
+    const { email, name, role = 'customer', phone = '', restaurantName = '', restaurantAddress = '', latitude = null, longitude = null } = req.body;
     if (!email || !email.includes('@')) {
       return res.status(400).json({ success: false, message: 'Valid Google Account Email zaroori hai!' });
     }
@@ -465,6 +465,7 @@ function googleLogin(req, res) {
       db.users.push(user);
     } else {
       user.name = cleanName;
+      if (phone) user.phone = cleanPhone;
       user.googleAuth = true;
     }
 
@@ -495,13 +496,13 @@ function googleLogin(req, res) {
       if (!restaurant) {
         restaurant = {
           id: `rest_${Date.now().toString(36)}`,
-          name: cleanName + ' Kitchen',
-          phone: user.phone,
+          name: restaurantName || (cleanName + ' Kitchen'),
+          phone: cleanPhone || user.phone,
           ownerEmail: cleanEmail,
-          address: 'Main Market, City Center',
+          address: restaurantAddress || 'Main Market, City Center',
           cuisine: 'North Indian, Snacks, Thali',
-          latitude: null,
-          longitude: null,
+          latitude: latitude || null,
+          longitude: longitude || null,
           commissionPercent: 15,
           isActive: true,
           isOpen: true,
@@ -509,6 +510,12 @@ function googleLogin(req, res) {
           createdAt: new Date().toISOString()
         };
         db.restaurants.push(restaurant);
+      } else {
+        if (restaurantName) restaurant.name = restaurantName;
+        if (restaurantAddress) restaurant.address = restaurantAddress;
+        if (cleanPhone) restaurant.phone = cleanPhone;
+        if (latitude) restaurant.latitude = latitude;
+        if (longitude) restaurant.longitude = longitude;
       }
     }
 

@@ -85,7 +85,7 @@ function updateRestaurantLocation(req, res) {
 }
 
 function addMenuItem(req, res) {
-  const { restaurantId, name, price, isVeg = true, category = 'Main Course', image = '' } = req.body;
+  const { restaurantId, name, description = '', price, rating = 4.5, isVeg = true, category = 'Main Course', image = '' } = req.body;
   if (!restaurantId || !name || price === undefined || price === null || price === '') {
     return res.status(400).json({ success: false, message: 'Restaurant ID, item name, and price are required' });
   }
@@ -103,7 +103,9 @@ function addMenuItem(req, res) {
   const newItem = {
     id: `m_${Date.now().toString(36)}`,
     name: String(name).trim(),
+    description: String(description || '').trim(),
     price: parseFloat(price) || 0,
+    rating: parseFloat(rating) || 4.5,
     isVeg: Boolean(isVeg),
     category: category || 'Main Course',
     image: image || '',
