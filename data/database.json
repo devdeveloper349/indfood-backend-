@@ -25,6 +25,33 @@
       "googleAuth": true,
       "role": "rider",
       "createdAt": "2026-10-29T01:45:32.923Z"
+    },
+    {
+      "id": "usr_ce86df21",
+      "name": "Devraj Customer",
+      "phone": "9876543210",
+      "email": "devrajparmar349@gmail.com",
+      "password": "$2b$10$EBFD.HGpnuKrDaoSH/JNsemAKvx/CKTcqT9JaBNzm6qZYkTjNZLua",
+      "role": "customer",
+      "createdAt": "2026-10-29T03:38:29.005Z"
+    },
+    {
+      "id": "usr_cc2dddb9",
+      "name": "Devraj Rider",
+      "phone": "9876543211",
+      "email": "devrajrider@gmail.com",
+      "password": "$2b$10$c9B7BO9nbybSUgITTdALLuCwCuDFK4oLAG73l5K0kdkZjV2FXcr9q",
+      "role": "rider",
+      "createdAt": "2026-10-29T03:38:29.125Z"
+    },
+    {
+      "id": "usr_80157f4c",
+      "name": "Devraj Parmar",
+      "phone": "9876543212",
+      "email": "devraj.rider@gmail.com",
+      "password": "$2b$10$UaRn73zCaxl92/oefaxUq.ImL28A5LDOToaXFi7P5Cjkx2BrTOmJe",
+      "role": "rider",
+      "createdAt": "2026-10-29T03:43:25.180Z"
     }
   ],
   "riders": [
@@ -53,6 +80,33 @@
       "completedTrips": 0,
       "bikeNumber": "BIKE-REG",
       "createdAt": "2026-10-29T01:45:32.923Z"
+    },
+    {
+      "userId": "usr_cc2dddb9",
+      "phone": "9876543211",
+      "email": "devrajrider@gmail.com",
+      "name": "Devraj Rider",
+      "permanentRiderId": "devraj382640",
+      "kycStatus": "APPROVED",
+      "isOnline": true,
+      "walletBalance": 0,
+      "completedTrips": 0,
+      "bikeNumber": "BIKE-REG",
+      "createdAt": "2026-10-29T03:38:29.126Z"
+    },
+    {
+      "userId": "usr_80157f4c",
+      "phone": "9876543212",
+      "email": "devraj.rider@gmail.com",
+      "name": "Devraj Parmar",
+      "permanentRiderId": "devraj513405",
+      "kycStatus": "APPROVED",
+      "isOnline": true,
+      "walletBalance": 25.08,
+      "completedTrips": 1,
+      "bikeNumber": "BIKE-REG",
+      "createdAt": "2026-10-29T03:43:25.180Z",
+      "codCashInHand": 214.25
     }
   ],
   "restaurants": [
@@ -181,17 +235,179 @@
       "bookedRiders": []
     }
   ],
-  "orders": [],
+  "orders": [
+    {
+      "orderId": "ORD-335730",
+      "customerId": "usr_ce86df21",
+      "customerName": "Devraj Parmar",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvnv2ojo",
+      "restaurantName": "Indian zaika",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 23.185,
+      "restaurantLng": 75.789,
+      "items": [
+        {
+          "id": "m_mvnw759o",
+          "name": "Paneer Butter Masala",
+          "price": 220,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Devraj Residence, Tower A, Flat 302",
+      "customerLat": 23.185,
+      "customerLng": 75.789,
+      "distanceKm": 2.5,
+      "paymentMethod": "COD",
+      "paymentStatus": "COD_PENDING",
+      "razorpayOrderId": null,
+      "financials": {
+        "foodTotal": 220,
+        "distanceKm": 2.5,
+        "deliveryFee": 36.25,
+        "platformFee": 8,
+        "customerTotalPaid": 214.25,
+        "riderPayout": 25.08,
+        "restaurantEarning": 187,
+        "ownerCommission": 33,
+        "deliveryMargin": 11.17,
+        "ownerNetProfit": 52.17,
+        "promoDiscount": 50,
+        "promoCode": "DHAMAKA50"
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": null,
+      "riderLat": null,
+      "riderLng": null,
+      "cookingInstructions": "",
+      "deliveryInstructions": "",
+      "promoCode": "DHAMAKA50",
+      "promoDiscount": 50,
+      "pickupCode": "5730",
+      "deliveryOtp": "5803",
+      "createdAt": "2026-10-29T03:38:29.179Z",
+      "acceptedAt": "2026-10-29T03:38:29.208Z",
+      "targetedRiderId": "usr_g_0d01143e",
+      "targetedRiderName": "Google Ramesh",
+      "targetedRiderPermanentId": "google493482",
+      "targetedRiderExpiresAt": 1793245154208,
+      "preparingAt": "2026-10-29T03:38:29.219Z",
+      "ready_for_pickupAt": "2026-10-29T03:38:29.230Z",
+      "riderArrivedAtRestaurant": true,
+      "riderArrivedAt": "2026-10-29T03:38:29.258Z",
+      "foodHandedOver": true,
+      "pickedUpAt": "2026-10-29T03:38:29.270Z",
+      "deliveredAt": "2026-10-29T03:38:29.281Z"
+    },
+    {
+      "orderId": "ORD-353818",
+      "customerId": "usr_ce86df21",
+      "customerName": "Devraj Customer",
+      "customerPhone": "9876543210",
+      "restaurantId": "rest_mvnv2ojo",
+      "restaurantName": "Indian zaika",
+      "restaurantAddress": "Maksi road alert",
+      "restaurantPhone": "9174782706",
+      "restaurantLat": 23.185,
+      "restaurantLng": 75.789,
+      "items": [
+        {
+          "id": "m_mvnw759o",
+          "name": "Paneer Butter Masala",
+          "price": 220,
+          "quantity": 1
+        }
+      ],
+      "deliveryAddress": "Devraj Residence, Tower A",
+      "customerLat": 23.185,
+      "customerLng": 75.789,
+      "distanceKm": 2.5,
+      "paymentMethod": "COD",
+      "paymentStatus": "PAID_CASH",
+      "razorpayOrderId": null,
+      "financials": {
+        "foodTotal": 220,
+        "distanceKm": 2.5,
+        "deliveryFee": 36.25,
+        "platformFee": 8,
+        "customerTotalPaid": 214.25,
+        "riderPayout": 25.08,
+        "restaurantEarning": 187,
+        "ownerCommission": 33,
+        "deliveryMargin": 11.17,
+        "ownerNetProfit": 52.17,
+        "promoDiscount": 50,
+        "promoCode": "SUPER50"
+      },
+      "orderStatus": "DELIVERED",
+      "assignedRider": {
+        "userId": "usr_80157f4c",
+        "permanentRiderId": "devraj513405",
+        "name": "Devraj Parmar",
+        "phone": "9876543212",
+        "ratings": 5
+      },
+      "riderLat": null,
+      "riderLng": null,
+      "cookingInstructions": "",
+      "deliveryInstructions": "",
+      "promoCode": "SUPER50",
+      "promoDiscount": 50,
+      "pickupCode": "3818",
+      "deliveryOtp": "9553",
+      "createdAt": "2026-10-29T03:43:25.243Z",
+      "acceptedAt": "2026-10-29T03:43:25.269Z",
+      "targetedRiderId": "usr_80157f4c",
+      "targetedRiderName": "Devraj Parmar",
+      "targetedRiderPermanentId": "devraj513405",
+      "targetedRiderExpiresAt": 1793245450269,
+      "preparingAt": "2026-10-29T03:43:25.288Z",
+      "ready_for_pickupAt": "2026-10-29T03:43:25.300Z",
+      "acceptedByRiderAt": "2026-10-29T03:43:25.326Z",
+      "riderArrivedAtRestaurant": true,
+      "foodHandedOver": true,
+      "riderArrivedAt": "2026-10-29T03:43:25.337Z",
+      "pickedUpAt": "2026-10-29T03:43:25.348Z",
+      "deliveredAt": "2026-10-29T03:43:25.359Z"
+    }
+  ],
   "wallets": {
     "owner": {
-      "totalRevenue": 26278.25,
-      "totalCommission": 3890.55,
-      "totalPlatformFee": 40,
-      "totalDeliveryMargin": 78.41,
-      "netProfit": 4008.96
+      "totalRevenue": 26706.75,
+      "totalCommission": 3956.55,
+      "totalPlatformFee": 56,
+      "totalDeliveryMargin": 100.75,
+      "netProfit": 4113.3
     }
   },
   "promocodes": [
+    {
+      "id": "promo_1793245405195_tf0t",
+      "code": "SUPER50",
+      "discount": 50,
+      "minOrder": 100,
+      "title": "Super ₹50 Flat Off",
+      "description": "Instant ₹50 savings on all meals",
+      "active": true,
+      "usedBy": [
+        "9876543210"
+      ],
+      "createdAt": "2026-10-29T03:43:25.195Z"
+    },
+    {
+      "id": "promo_1793245109137_vc13",
+      "code": "DHAMAKA50",
+      "discount": 50,
+      "minOrder": 100,
+      "title": "Dhamaka ₹50 Flat Discount",
+      "description": "Use code DHAMAKA50 for ₹50 off on your food order",
+      "active": true,
+      "usedBy": [
+        "9876543210"
+      ],
+      "createdAt": "2026-10-29T03:38:29.138Z"
+    },
     {
       "id": "promo_1793238385450_8301",
       "code": "INDFOOD50",

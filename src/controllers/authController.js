@@ -248,13 +248,13 @@ function registerUser(req, res) {
       if (!restaurant) {
         restaurant = {
           id: `rest_${Date.now().toString(36)}`,
-          name: cleanName,
+          name: req.body.restaurantName || cleanName,
           phone: cleanPhone,
           ownerEmail: cleanEmail,
-          address: 'Main Market, City Center',
+          address: req.body.restaurantAddress || 'Main Market, City Center',
           cuisine: 'North Indian, Snacks, Thali',
-          latitude: null, // No hardcoded fixed location! Restaurant sets its own
-          longitude: null,
+          latitude: req.body.latitude || null,
+          longitude: req.body.longitude || null,
           commissionPercent: 15,
           isActive: true,
           isOpen: true,
@@ -263,10 +263,19 @@ function registerUser(req, res) {
         };
         db.restaurants.push(restaurant);
       } else {
-        restaurant.name = cleanName;
+        if (req.body.restaurantName) restaurant.name = req.body.restaurantName;
+        if (req.body.restaurantAddress) restaurant.address = req.body.restaurantAddress;
+        if (req.body.latitude) restaurant.latitude = req.body.latitude;
+        if (req.body.longitude) restaurant.longitude = req.body.longitude;
         restaurant.phone = cleanPhone;
         restaurant.ownerEmail = cleanEmail;
       }
+    }
+
+    if (role === 'customer') {
+      if (req.body.address) user.address = req.body.address;
+      if (req.body.latitude) user.latitude = req.body.latitude;
+      if (req.body.longitude) user.longitude = req.body.longitude;
     }
 
     writeDb(db);
