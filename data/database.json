@@ -298,7 +298,9 @@
       "riderArrivedAt": "2026-10-29T03:38:29.258Z",
       "foodHandedOver": true,
       "pickedUpAt": "2026-10-29T03:38:29.270Z",
-      "deliveredAt": "2026-10-29T03:38:29.281Z"
+      "deliveredAt": "2026-10-29T03:38:29.281Z",
+      "codPaymentLinkId": "plink_TvZoXN4PUeROCN",
+      "codPaymentLinkUrl": "https://rzp.io/rzp/LwUqLJuS"
     },
     {
       "orderId": "ORD-353818",

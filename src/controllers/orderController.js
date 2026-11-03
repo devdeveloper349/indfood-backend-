@@ -609,8 +609,10 @@ async function generateCodQr(req, res) {
             message: 'Payment already received!'
           });
         }
-        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(order.codPaymentLinkUrl)}`;
-        const upiUri = `upi://pay?pa=devraj@okaxis&pn=INDFood&am=${totalPaid}&cu=INR&tr=${order.orderId}&tn=Order-${order.orderId}`;
+        const businessUpiId = process.env.BUSINESS_UPI_ID || '9174782706@ybl';
+        const businessName = process.env.BUSINESS_NAME || 'INDFood';
+        const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(upiUri)}`;
         return res.json({
           success: true,
           isPaid: false,
@@ -654,9 +656,11 @@ async function generateCodQr(req, res) {
     }
 
     const payUrl = plink ? plink.short_url : `https://rzp.io/i/${order.orderId}`;
-    const qrData = payUrl;
+    const businessUpiId = process.env.BUSINESS_UPI_ID || '9174782706@ybl';
+    const businessName = process.env.BUSINESS_NAME || 'INDFood';
+    const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
+    const qrData = upiUri;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(qrData)}`;
-    const upiUri = `upi://pay?pa=devraj@okaxis&pn=INDFood&am=${totalPaid}&cu=INR&tr=${order.orderId}&tn=Order-${order.orderId}`;
 
     order.codPaymentLinkId = plink ? plink.id : `plink_sim_${order.orderId}`;
     order.codPaymentLinkUrl = payUrl;
