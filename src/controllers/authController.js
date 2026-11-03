@@ -701,12 +701,38 @@ function loginOrRegister(req, res) {
     writeDb(db);
   }
 
+  let restaurant = null;
+  if (role === 'restaurant') {
+    restaurant = db.restaurants.find(r => r.phone === cleanPhone || (r.ownerEmail && r.ownerEmail === user.email));
+    if (!restaurant) {
+      restaurant = {
+        id: `rest_${Date.now().toString(36)}`,
+        name: req.body.restaurantName || name || `${user.name || 'My'} Restaurant`,
+        phone: cleanPhone,
+        ownerEmail: user.email,
+        address: req.body.restaurantAddress || 'Main Market, City Center',
+        cuisine: 'North Indian, Fast Food',
+        latitude: req.body.latitude || null,
+        longitude: req.body.longitude || null,
+        commissionPercent: 15,
+        isActive: true,
+        isOpen: true,
+        menu: [],
+        createdAt: new Date().toISOString()
+      };
+      db.restaurants.push(restaurant);
+      writeDb(db);
+    }
+  }
+
   return res.json({
     success: true,
     message: 'Login successful',
     user,
     riderInfo,
     rider: riderInfo,
+    permanentRiderId: riderInfo ? riderInfo.permanentRiderId : null,
+    restaurant,
     token: `dummy_jwt_token_${user.id}`
   });
 }

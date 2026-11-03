@@ -301,7 +301,7 @@ function listOrders(req, res) {
           o.assignedRider.phone === currentRiderPhone
         );
         if (matchesId || matchesPhone) {
-          return ['ACCEPTED_BY_RIDER', 'AT_RESTAURANT', 'HANDED_OVER', 'ON_THE_WAY'].includes(o.orderStatus);
+          return ['ACCEPTED_BY_RIDER', 'AT_RESTAURANT', 'HANDED_OVER', 'ON_THE_WAY', 'RIDER_ASSIGNED', 'OUT_FOR_DELIVERY', 'READY_FOR_PICKUP'].includes(o.orderStatus);
         }
         return false;
       }
@@ -421,6 +421,12 @@ function riderRejectOrder(req, res) {
   dispatchRadarRider(order, db);
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
+
   return res.json({
     success: true,
     message: 'Trip passed to next available rider in radar network',
@@ -467,6 +473,12 @@ function riderAcceptOrder(req, res) {
 
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
+
   return res.json({
     success: true,
     message: `Order assigned to Delivery Partner ${rider.permanentRiderId}`,
@@ -493,6 +505,12 @@ function riderArriveRestaurant(req, res) {
 
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
+
   return res.json({
     success: true,
     message: 'Rider arrived at restaurant. Order ID unlocked!',
@@ -516,6 +534,12 @@ function restaurantConfirmHandover(req, res) {
   order.orderStatus = 'HANDED_OVER';
 
   writeDb(db);
+
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
 
   return res.json({
     success: true,
@@ -542,6 +566,12 @@ function riderPickupOrder(req, res) {
 
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
+
   return res.json({
     success: true,
     message: 'Order picked up! Navigation to Customer active.',
@@ -550,10 +580,181 @@ function riderPickupOrder(req, res) {
 }
 
 /**
- * Rider completes delivery directly to customer (Zomato style: No customer OTP required)
+ * Generate Dynamic Razorpay QR for COD orders at delivery
+ */
+async function generateCodQr(req, res) {
+  try {
+    const { orderId } = req.body;
+    const db = readDb();
+    const order = db.orders.find(o => o.orderId === orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    const totalPaid = (order.financials && order.financials.customerTotalPaid) || 100;
+    const amountInPaise = Math.round(totalPaid * 100);
+
+    // Reuse existing link if already generated and valid
+    if (order.codPaymentLinkId && order.codPaymentLinkUrl) {
+      try {
+        const existingPlink = await razorpay.paymentLink.fetch(order.codPaymentLinkId);
+        if (existingPlink && existingPlink.status === 'paid') {
+          order.paymentStatus = 'PAID_ONLINE_COD';
+          writeDb(db);
+          return res.json({
+            success: true,
+            isPaid: true,
+            orderId: order.orderId,
+            amount: totalPaid,
+            message: 'Payment already received!'
+          });
+        }
+        const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(order.codPaymentLinkUrl)}`;
+        const upiUri = `upi://pay?pa=devraj@okaxis&pn=INDFood&am=${totalPaid}&cu=INR&tr=${order.orderId}&tn=Order-${order.orderId}`;
+        return res.json({
+          success: true,
+          isPaid: false,
+          orderId: order.orderId,
+          amount: totalPaid,
+          paymentLinkId: order.codPaymentLinkId,
+          paymentUrl: order.codPaymentLinkUrl,
+          qrUrl,
+          upiUri
+        });
+      } catch (e) {
+        // regenerate if expired or invalid
+      }
+    }
+
+    let plink = null;
+    let customerPhone = (order.customerPhone || '').toString().replace(/\D/g, '');
+    if (customerPhone.length > 10 && customerPhone.startsWith('91')) customerPhone = customerPhone.slice(2);
+    if (customerPhone.length > 10 && customerPhone.startsWith('0')) customerPhone = customerPhone.slice(1);
+    if (customerPhone.length > 10) customerPhone = customerPhone.slice(-10);
+    if (!customerPhone || customerPhone.length !== 10) customerPhone = '9826012345';
+
+    try {
+      plink = await razorpay.paymentLink.create({
+        amount: amountInPaise,
+        currency: 'INR',
+        accept_partial: false,
+        description: `Order #${order.orderId} Delivery Payment`,
+        customer: {
+          name: order.customerName || 'Customer',
+          contact: customerPhone
+        },
+        notify: { sms: false, email: false },
+        notes: {
+          orderId: order.orderId,
+          source: 'rider_app_cod_qr'
+        }
+      });
+    } catch (err) {
+      console.error('Razorpay Payment Link creation error:', err.message);
+    }
+
+    const payUrl = plink ? plink.short_url : `https://rzp.io/i/${order.orderId}`;
+    const qrData = payUrl;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(qrData)}`;
+    const upiUri = `upi://pay?pa=devraj@okaxis&pn=INDFood&am=${totalPaid}&cu=INR&tr=${order.orderId}&tn=Order-${order.orderId}`;
+
+    order.codPaymentLinkId = plink ? plink.id : `plink_sim_${order.orderId}`;
+    order.codPaymentLinkUrl = payUrl;
+    writeDb(db);
+
+    return res.json({
+      success: true,
+      isPaid: order.paymentStatus === 'PAID_ONLINE_COD',
+      orderId: order.orderId,
+      amount: totalPaid,
+      paymentLinkId: order.codPaymentLinkId,
+      paymentUrl: payUrl,
+      qrUrl,
+      upiUri
+    });
+  } catch (err) {
+    console.error('generateCodQr error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Check if the COD dynamic Razorpay QR has been paid
+ */
+async function checkCodQrPayment(req, res) {
+  try {
+    const { orderId } = req.body;
+    const db = readDb();
+    const order = db.orders.find(o => o.orderId === orderId);
+    if (!order) {
+      return res.status(404).json({ success: false, message: 'Order not found' });
+    }
+
+    if (order.paymentStatus === 'PAID_ONLINE_COD' || order.paymentStatus === 'PAID') {
+      return res.json({
+        success: true,
+        isPaid: true,
+        amount: (order.financials && order.financials.customerTotalPaid) || 0,
+        orderId: order.orderId
+      });
+    }
+
+    let isPaid = false;
+    if (order.codPaymentLinkId && !order.codPaymentLinkId.startsWith('plink_sim_')) {
+      try {
+        const plink = await razorpay.paymentLink.fetch(order.codPaymentLinkId);
+        if (plink && (plink.status === 'paid' || plink.amount_paid >= plink.amount)) {
+          isPaid = true;
+        }
+      } catch (err) {
+        console.error('Error fetching razorpay payment link:', err.message);
+      }
+    }
+
+    if (isPaid) {
+      order.paymentStatus = 'PAID_ONLINE_COD';
+      writeDb(db);
+
+      if (req.io) {
+        req.io.to(`order_${order.orderId}`).emit('cod_payment_success', {
+          orderId: order.orderId,
+          amount: (order.financials && order.financials.customerTotalPaid) || 0
+        });
+        req.io.emit('cod_payment_success', {
+          orderId: order.orderId,
+          amount: (order.financials && order.financials.customerTotalPaid) || 0
+        });
+        req.io.emit('global_order_update', order);
+      }
+
+      return res.json({
+        success: true,
+        isPaid: true,
+        amount: (order.financials && order.financials.customerTotalPaid) || 0,
+        orderId: order.orderId
+      });
+    }
+
+    return res.json({
+      success: true,
+      isPaid: false,
+      amount: (order.financials && order.financials.customerTotalPaid) || 0,
+      orderId: order.orderId
+    });
+  } catch (err) {
+    console.error('checkCodQrPayment error:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+}
+
+/**
+ * Rider completes delivery directly to customer
+ * Supports:
+ * 1) CASH: Rider receives cash in hand -> order amount deducted from rider wallet (balance can go negative), payout added.
+ * 2) ONLINE_QR: Customer paid via dynamic QR -> NO cash deduction, payout added to rider wallet.
  */
 function completeDelivery(req, res) {
-  const { orderId, riderUserId } = req.body;
+  const { orderId, riderUserId, paymentType = 'CASH' } = req.body;
   const db = readDb();
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
@@ -563,17 +764,37 @@ function completeDelivery(req, res) {
   order.orderStatus = 'DELIVERED';
   order.deliveredAt = new Date().toISOString();
 
-  // Credit rider wallet with payout
-  const rider = db.riders.find(r => r.userId === riderUserId || r.permanentRiderId === riderUserId || (r.phone && r.phone === riderUserId) || (order.assignedRider && (r.permanentRiderId === order.assignedRider.permanentRiderId || r.userId === order.assignedRider.userId || r.phone === order.assignedRider.phone)));
+  const totalOrderPaid = (order.financials && order.financials.customerTotalPaid) || 0;
+  const payout = (order.financials && order.financials.riderPayout) || 40;
+
+  // Credit/Debit rider wallet
+  const rider = db.riders.find(r =>
+    r.userId === riderUserId ||
+    r.permanentRiderId === riderUserId ||
+    (r.phone && r.phone === riderUserId) ||
+    (order.assignedRider && (
+      r.permanentRiderId === order.assignedRider.permanentRiderId ||
+      r.userId === order.assignedRider.userId ||
+      r.phone === order.assignedRider.phone
+    ))
+  );
+
+  const isOnlinePayment = paymentType === 'ONLINE_QR' || order.paymentStatus === 'PAID_ONLINE_COD' || order.paymentMethod === 'ONLINE';
+
   if (rider) {
-    const payout = (order.financials && order.financials.riderPayout) || 40;
-    rider.walletBalance = Math.round(((rider.walletBalance || 0) + payout) * 100) / 100;
     rider.completedTrips = (rider.completedTrips || 0) + 1;
 
-    // If COD, rider collects cash, wallet records cash in hand
-    if (order.paymentMethod === 'COD') {
-      const totalPaid = (order.financials && order.financials.customerTotalPaid) || 0;
-      rider.codCashInHand = Math.round(((rider.codCashInHand || 0) + totalPaid) * 100) / 100;
+    if (isOnlinePayment) {
+      // Customer paid online / via QR -> Rider receives full delivery payout (+)
+      // Zero cash deducted!
+      rider.walletBalance = Math.round(((rider.walletBalance || 0) + payout) * 100) / 100;
+      order.paymentStatus = 'PAID_ONLINE_QR';
+    } else {
+      // Customer paid Cash to Rider -> Rider collects cash in hand
+      // Deduct order cash from rider wallet (wallet balance CAN go negative)
+      // and add delivery payout (+)
+      rider.walletBalance = Math.round(((rider.walletBalance || 0) - totalOrderPaid + payout) * 100) / 100;
+      rider.codCashInHand = Math.round(((rider.codCashInHand || 0) + totalOrderPaid) * 100) / 100;
       order.paymentStatus = 'PAID_CASH';
     }
   }
@@ -598,10 +819,19 @@ function completeDelivery(req, res) {
 
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('order_status_update', order);
+    req.io.emit('order_status_updated', order);
+    req.io.emit('global_order_update', order);
+  }
+
   return res.json({
     success: true,
-    message: 'Order successfully delivered! Payout credited to Delivery Partner Wallet.',
+    message: isOnlinePayment
+      ? 'Online Payment received via QR! Delivery completed, payout added to wallet.'
+      : 'Cash collected! Order amount adjusted in Delivery Partner Wallet.',
     order,
+    paymentType: isOnlinePayment ? 'ONLINE_QR' : 'CASH',
     riderWallet: rider ? rider.walletBalance : null,
     ownerProfitGained: order.financials ? order.financials.ownerNetProfit : 0
   });
@@ -686,5 +916,7 @@ module.exports = {
   riderRejectOrder,
   completeDelivery,
   verifyDeliveryOtp,
-  updateRiderLocation
+  updateRiderLocation,
+  generateCodQr,
+  checkCodQrPayment
 };

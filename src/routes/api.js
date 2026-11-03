@@ -48,6 +48,8 @@ router.post('/orders/reject-rider', orderController.riderRejectOrder);
 router.post('/orders/deliver', orderController.completeDelivery);
 router.post('/orders/verify-otp', orderController.verifyDeliveryOtp);
 router.post('/orders/rider-location', orderController.updateRiderLocation);
+router.post('/orders/generate-cod-qr', orderController.generateCodQr);
+router.post('/orders/check-cod-qr', orderController.checkCodQrPayment);
 
 // 4b. Promo Code & Flash Discount routes
 router.post('/promocodes/broadcast', promoController.broadcastPromoCode);

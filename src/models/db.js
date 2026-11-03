@@ -2,6 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const DB_FILE = path.join(__dirname, '../../data/database.json');
+const TMP_FILE = path.join(__dirname, '../../data/database.json.tmp');
 
 // Initial clean schema defaults - ZERO fake data
 const defaultData = {
@@ -36,6 +37,10 @@ const defaultData = {
   }
 };
 
+let memoryDb = null;
+let isFlushingDisk = false;
+let flushScheduled = false;
+
 function ensureDbFile() {
   const dir = path.dirname(DB_FILE);
   if (!fs.existsSync(dir)) {
@@ -46,25 +51,69 @@ function ensureDbFile() {
   }
 }
 
-function readDb() {
+function normalizeDb(parsed) {
+  if (!parsed || typeof parsed !== 'object') {
+    parsed = JSON.parse(JSON.stringify(defaultData));
+  }
+  parsed.promocodes = parsed.promocodes || [];
+  parsed.users = parsed.users || [];
+  parsed.riders = parsed.riders || [];
+  parsed.restaurants = parsed.restaurants || [];
+  parsed.orders = parsed.orders || [];
+  parsed.shifts = parsed.shifts || defaultData.shifts;
+  parsed.wallets = parsed.wallets || defaultData.wallets;
+  return parsed;
+}
+
+function loadDbFromDisk() {
   ensureDbFile();
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
     const parsed = JSON.parse(raw);
-    parsed.promocodes = parsed.promocodes || [];
-    parsed.users = parsed.users || [];
-    parsed.riders = parsed.riders || [];
-    parsed.restaurants = parsed.restaurants || [];
-    parsed.orders = parsed.orders || [];
-    return parsed;
+    return normalizeDb(parsed);
   } catch (e) {
-    return defaultData;
+    console.error('Error loading DB from disk, attempting backup or defaults:', e.message);
+    return normalizeDb(JSON.parse(JSON.stringify(defaultData)));
   }
 }
 
+function flushDbToDiskAtomic() {
+  if (isFlushingDisk) {
+    flushScheduled = true;
+    return;
+  }
+  isFlushingDisk = true;
+  flushScheduled = false;
+
+  try {
+    ensureDbFile();
+    const dataStr = JSON.stringify(memoryDb, null, 2);
+    // Write atomically via temporary file then atomic rename
+    fs.writeFileSync(TMP_FILE, dataStr, 'utf-8');
+    fs.renameSync(TMP_FILE, DB_FILE);
+  } catch (err) {
+    console.error('Atomic DB flush error:', err.message);
+  } finally {
+    isFlushingDisk = false;
+    if (flushScheduled) {
+      setImmediate(flushDbToDiskAtomic);
+    }
+  }
+}
+
+function readDb() {
+  if (!memoryDb) {
+    memoryDb = loadDbFromDisk();
+  }
+  return memoryDb;
+}
+
 function writeDb(data) {
-  ensureDbFile();
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  if (data) {
+    memoryDb = normalizeDb(data);
+  }
+  flushDbToDiskAtomic();
+  return memoryDb;
 }
 
 module.exports = {
