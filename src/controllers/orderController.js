@@ -64,15 +64,9 @@ async function createOrder(req, res) {
         parseFloat(customerLat),
         parseFloat(customerLng)
       );
-      if (calcDist <= 35) {
-        actualDistanceKm = calcDist;
-      } else if (distanceKm && !isNaN(parseFloat(distanceKm)) && parseFloat(distanceKm) > 0 && parseFloat(distanceKm) <= 35) {
-        actualDistanceKm = Math.round(parseFloat(distanceKm) * 10) / 10;
-      } else {
-        actualDistanceKm = 3.5;
-      }
+      actualDistanceKm = Math.max(0.1, calcDist);
     } else if (distanceKm && !isNaN(parseFloat(distanceKm)) && parseFloat(distanceKm) > 0) {
-      actualDistanceKm = Math.round(parseFloat(distanceKm) * 10) / 10;
+      actualDistanceKm = Math.max(0.1, Math.round(parseFloat(distanceKm) * 10) / 10);
     }
 
     // Calculate food subtotal
@@ -159,10 +153,10 @@ async function createOrder(req, res) {
       customerLng: customerLng ? parseFloat(customerLng) : null,
       distanceKm: actualDistanceKm,
       paymentMethod,
-      paymentStatus: paymentMethod === 'ONLINE' ? 'PAID' : 'COD_PENDING',
+      paymentStatus: paymentMethod === 'ONLINE' ? 'PAYMENT_PENDING' : 'COD_PENDING',
       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
       financials,
-      orderStatus: 'PLACED', // PLACED, ACCEPTED, PREPARING, READY_FOR_PICKUP, ON_THE_WAY, DELIVERED, CANCELLED
+      orderStatus: paymentMethod === 'ONLINE' ? 'PENDING_PAYMENT' : 'PLACED',
       assignedRider: null,
       riderLat: null,
       riderLng: null,
@@ -178,7 +172,8 @@ async function createOrder(req, res) {
     db.orders.push(newOrder);
     writeDb(db);
 
-    if (req.io) {
+    // If online, do NOT broadcast to restaurant or riders until payment is verified!
+    if (paymentMethod !== 'ONLINE' && req.io) {
       req.io.emit('new_order_restaurant', newOrder);
       req.io.emit('global_order_update', newOrder);
     }
@@ -474,6 +469,53 @@ function riderAcceptOrder(req, res) {
   order.acceptedByRiderAt = new Date().toISOString();
   order.riderArrivedAtRestaurant = false;
   order.foodHandedOver = false;
+
+  // Real 2-Leg Dynamic Distance Calculation: (Rider -> Restaurant) + (Restaurant -> Customer)
+  const riderLat = req.body.riderLat || req.body.latitude;
+  const riderLng = req.body.riderLng || req.body.longitude;
+  let pickupKm = 1.5;
+  if (riderLat && riderLng && order.restaurantLat && order.restaurantLng) {
+    pickupKm = calculateHaversineDistanceKm(
+      parseFloat(riderLat),
+      parseFloat(riderLng),
+      parseFloat(order.restaurantLat),
+      parseFloat(order.restaurantLng)
+    );
+  } else if (req.body.pickupDistanceKm && !isNaN(parseFloat(req.body.pickupDistanceKm))) {
+    pickupKm = parseFloat(req.body.pickupDistanceKm);
+  }
+
+  let deliveryKm = order.distanceKm || 2.5;
+  if (order.restaurantLat && order.restaurantLng && order.customerLat && order.customerLng) {
+    deliveryKm = calculateHaversineDistanceKm(
+      parseFloat(order.restaurantLat),
+      parseFloat(order.restaurantLng),
+      parseFloat(order.customerLat),
+      parseFloat(order.customerLng)
+    );
+  } else if (req.body.deliveryDistanceKm && !isNaN(parseFloat(req.body.deliveryDistanceKm))) {
+    deliveryKm = parseFloat(req.body.deliveryDistanceKm);
+  }
+
+  const totalTripKm = Math.round((pickupKm + deliveryKm) * 10) / 10;
+  const settings = db.settings || {};
+  const perKmRate = parseFloat(settings.riderPerKmRate !== undefined ? settings.riderPerKmRate : 12.00);
+  const incentiveActive = settings.riderIncentiveActive !== false;
+  const incentiveBonus = incentiveActive ? parseFloat(settings.riderIncentiveBonus !== undefined ? settings.riderIncentiveBonus : 15.00) : 0;
+  const distPay = Math.round(totalTripKm * perKmRate * 100) / 100;
+  const finalPayout = Math.round((distPay + incentiveBonus) * 100) / 100;
+
+  order.financials = order.financials || {};
+  order.financials.pickupDistanceKm = pickupKm;
+  order.financials.deliveryDistanceKm = deliveryKm;
+  order.financials.totalDistanceKm = totalTripKm;
+  order.financials.distanceKm = totalTripKm;
+  order.financials.riderPerKmRate = perKmRate;
+  order.financials.riderDistancePay = distPay;
+  order.financials.riderIncentive = incentiveBonus;
+  order.financials.riderIncentiveActive = incentiveActive;
+  order.financials.riderPayout = finalPayout;
+  order.distanceKm = totalTripKm;
 
   writeDb(db);
 
@@ -918,6 +960,21 @@ function updateRiderLocation(req, res) {
   }
 }
 
+function cancelUnpaidOrder(req, res) {
+  const { orderId } = req.body;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+  const db = readDb();
+  const idx = db.orders.findIndex(o => o.orderId === orderId && (o.orderStatus === 'PENDING_PAYMENT' || o.paymentStatus === 'PAYMENT_PENDING'));
+  if (idx !== -1) {
+    db.orders.splice(idx, 1);
+    writeDb(db);
+    return res.json({ success: true, message: 'Unpaid cancelled order removed successfully', orderId });
+  }
+  return res.json({ success: true, message: 'Order was not pending payment' });
+}
+
 module.exports = {
   createOrder,
   getOrderDetails,
@@ -932,5 +989,6 @@ module.exports = {
   verifyDeliveryOtp,
   updateRiderLocation,
   generateCodQr,
-  checkCodQrPayment
+  checkCodQrPayment,
+  cancelUnpaidOrder
 };

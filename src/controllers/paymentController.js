@@ -41,14 +41,21 @@ function verifyPayment(req, res) {
     const order = db.orders.find(o => o.orderId === orderId || o.razorpayOrderId === razorpay_order_id);
     if (order) {
       order.paymentStatus = 'PAID';
+      order.orderStatus = 'PLACED';
       order.razorpayPaymentId = razorpay_payment_id;
       writeDb(db);
+
+      if (req.io) {
+        req.io.emit('new_order_restaurant', order);
+        req.io.emit('global_order_update', order);
+      }
     }
 
     return res.json({
       success: true,
       message: 'Payment verified successfully! Money secured in Owner Razorpay account.',
-      paymentId: razorpay_payment_id
+      paymentId: razorpay_payment_id,
+      order
     });
   } catch (error) {
     console.error('Payment verify error:', error);
