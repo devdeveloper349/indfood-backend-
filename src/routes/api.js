@@ -73,6 +73,10 @@ router.post('/restaurants/toggle-status', restaurantController.toggleRestaurantS
 
 // 7. Admin routes
 router.get('/admin/dashboard', adminController.getDashboardStats);
+router.get('/admin/settings', adminController.getSettings);
+router.post('/admin/settings', adminController.updateSettings);
+router.get('/admin/restaurants', adminController.getAdminRestaurants);
+router.post('/admin/restaurant-commission', adminController.updateRestaurantCommission);
 router.post('/admin/commission', adminController.updatePlatformCommission);
 router.post('/admin/reset-database', adminController.resetDatabase);
 router.get('/admin/rider-lookup', adminController.lookupRider);

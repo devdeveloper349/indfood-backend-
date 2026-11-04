@@ -118,7 +118,7 @@
       "cuisine": "Veg & non Veg",
       "latitude": null,
       "longitude": null,
-      "commissionPercent": 15,
+      "commissionPercent": 17,
       "isActive": true,
       "menu": [
         {
@@ -421,5 +421,17 @@
       "usedBy": [],
       "createdAt": "2026-10-29T01:46:25.450Z"
     }
-  ]
+  ],
+  "settings": {
+    "businessName": "INDFood",
+    "businessUpiId": "9174782706@ybl",
+    "riderPerKmRate": 12,
+    "riderIncentiveBonus": 15,
+    "riderIncentiveActive": true,
+    "riderMinBasePay": 0,
+    "defaultRestaurantCommission": 15,
+    "defaultPlatformFee": 8,
+    "customerBaseDeliveryFee": 30,
+    "customerPerKmDeliveryFee": 12.5
+  }
 }

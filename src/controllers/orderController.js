@@ -79,10 +79,14 @@ async function createOrder(req, res) {
     const foodTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
 
     // Calculate exact financial split (Commission, Delivery Fee, Rider Payout, Owner Profit) based on actual KM
+    const commissionPercent = (restaurant && typeof restaurant.commissionPercent === 'number')
+      ? restaurant.commissionPercent
+      : ((db.settings && db.settings.defaultRestaurantCommission) !== undefined ? db.settings.defaultRestaurantCommission : 15);
+
     const financials = calculateOrderFinancials({
       foodTotal,
       distanceKm: actualDistanceKm,
-      commissionPercent: restaurant.commissionPercent || 15,
+      commissionPercent,
       isRainSurge
     });
 
@@ -609,9 +613,10 @@ async function generateCodQr(req, res) {
             message: 'Payment already received!'
           });
         }
-        const businessUpiId = process.env.BUSINESS_UPI_ID || '9174782706@ybl';
-        const businessName = process.env.BUSINESS_NAME || 'INDFood';
-        const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
+        const settings = db.settings || {};
+        const businessUpiId = settings.businessUpiId || process.env.BUSINESS_UPI_ID || 'INDFood@upi';
+        const businessName = settings.businessName || process.env.BUSINESS_NAME || 'INDFood';
+        const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&mode=02&purpose=00&orgid=159001&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
         const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(upiUri)}`;
         return res.json({
           success: true,
@@ -621,7 +626,9 @@ async function generateCodQr(req, res) {
           paymentLinkId: order.codPaymentLinkId,
           paymentUrl: order.codPaymentLinkUrl,
           qrUrl,
-          upiUri
+          upiUri,
+          businessName,
+          businessUpiId
         });
       } catch (e) {
         // regenerate if expired or invalid
@@ -656,9 +663,10 @@ async function generateCodQr(req, res) {
     }
 
     const payUrl = plink ? plink.short_url : `https://rzp.io/i/${order.orderId}`;
-    const businessUpiId = process.env.BUSINESS_UPI_ID || '9174782706@ybl';
-    const businessName = process.env.BUSINESS_NAME || 'INDFood';
-    const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
+    const settings = db.settings || {};
+    const businessUpiId = settings.businessUpiId || process.env.BUSINESS_UPI_ID || 'INDFood@upi';
+    const businessName = settings.businessName || process.env.BUSINESS_NAME || 'INDFood';
+    const upiUri = `upi://pay?pa=${businessUpiId}&pn=${encodeURIComponent(businessName)}&mc=5812&mode=02&purpose=00&orgid=159001&tr=${order.orderId}&tn=INDFood-Order-${order.orderId}&am=${totalPaid}&cu=INR`;
     const qrData = upiUri;
     const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=10&data=${encodeURIComponent(qrData)}`;
 
@@ -674,7 +682,9 @@ async function generateCodQr(req, res) {
       paymentLinkId: order.codPaymentLinkId,
       paymentUrl: payUrl,
       qrUrl,
-      upiUri
+      upiUri,
+      businessName,
+      businessUpiId
     });
   } catch (err) {
     console.error('generateCodQr error:', err);

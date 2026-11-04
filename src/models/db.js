@@ -26,6 +26,18 @@ const defaultData = {
   ],
   orders: [],
   promocodes: [],
+  settings: {
+    businessName: 'INDFood',
+    businessUpiId: process.env.BUSINESS_UPI_ID || '9174782706@ybl',
+    riderPerKmRate: 12.00,
+    riderIncentiveBonus: 15.00,
+    riderIncentiveActive: true,
+    riderMinBasePay: 0.00,
+    defaultRestaurantCommission: 15.00,
+    defaultPlatformFee: 8.00,
+    customerBaseDeliveryFee: 30.00,
+    customerPerKmDeliveryFee: 12.50
+  },
   wallets: {
     owner: {
       totalRevenue: 0,
@@ -62,6 +74,18 @@ function normalizeDb(parsed) {
   parsed.orders = parsed.orders || [];
   parsed.shifts = parsed.shifts || defaultData.shifts;
   parsed.wallets = parsed.wallets || defaultData.wallets;
+  parsed.settings = Object.assign({
+    businessName: process.env.BUSINESS_NAME || 'INDFood',
+    businessUpiId: process.env.BUSINESS_UPI_ID || '9174782706@ybl',
+    riderPerKmRate: parseFloat(process.env.PER_KM_RIDER_RATE || '12.00'),
+    riderIncentiveBonus: 15.00,
+    riderIncentiveActive: true,
+    riderMinBasePay: 0.00,
+    defaultRestaurantCommission: parseFloat(process.env.DEFAULT_RESTAURANT_COMMISSION_PERCENT || '15'),
+    defaultPlatformFee: parseFloat(process.env.DEFAULT_PLATFORM_FEE || '8.00'),
+    customerBaseDeliveryFee: parseFloat(process.env.BASE_CUSTOMER_DELIVERY_FEE || '30.00'),
+    customerPerKmDeliveryFee: parseFloat(process.env.PER_KM_CUSTOMER_DELIVERY_FEE || '12.50')
+  }, parsed.settings || {});
   return parsed;
 }
 
