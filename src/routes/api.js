@@ -72,6 +72,7 @@ router.post('/restaurants/menu/toggle', restaurantController.toggleItemAvailabil
 router.post('/restaurants/toggle-status', restaurantController.toggleRestaurantStatus);
 
 // 7. Admin routes
+router.get('/settings', adminController.getSettings);
 router.get('/admin/dashboard', adminController.getDashboardStats);
 router.get('/admin/settings', adminController.getSettings);
 router.post('/admin/settings', adminController.updateSettings);

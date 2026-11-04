@@ -158,6 +158,7 @@ function calculateOrderFinancials({
     riderPayout: riderSplit.riderPayout,
     restaurantCommissionPercent: effectiveCommPercent,
     restaurantEarning,
+    restaurantNetPayout: restaurantEarning,
     ownerCommission,
     deliveryMargin,
     ownerNetProfit

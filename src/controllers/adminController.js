@@ -96,6 +96,11 @@ function updateSettings(req, res) {
 
   writeDb(db);
 
+  if (req.io) {
+    req.io.emit('settings_updated', db.settings);
+    req.io.emit('pricing_updated', db.settings);
+  }
+
   return res.json({
     success: true,
     message: 'INDFood admin settings saved successfully!',
@@ -148,6 +153,10 @@ function updateRestaurantCommission(req, res) {
     }
     rest.commissionPercent = cleanPercent;
     writeDb(db);
+    if (req.io) {
+      req.io.emit('restaurant_commission_updated', { restaurantId, commissionPercent: cleanPercent, settings: db.settings });
+      req.io.emit('settings_updated', db.settings);
+    }
     return res.json({
       success: true,
       message: `Commission updated to ${cleanPercent}% for "${rest.name}"`,
@@ -165,6 +174,10 @@ function updateRestaurantCommission(req, res) {
       r.commissionPercent = cleanPercent;
     });
     writeDb(db);
+    if (req.io) {
+      req.io.emit('restaurant_commission_updated', { commissionPercent: cleanPercent, settings: db.settings });
+      req.io.emit('settings_updated', db.settings);
+    }
     return res.json({
       success: true,
       message: `Global default commission updated to ${cleanPercent}% for all restaurants`,
@@ -269,6 +282,10 @@ function toggleBlockRider(req, res) {
     rider.isOnline = false;
   }
   writeDb(db);
+
+  if (req.io) {
+    req.io.emit('rider_status_changed', { riderId: rider.permanentRiderId, isBlocked: rider.isBlocked });
+  }
 
   return res.json({
     success: true,

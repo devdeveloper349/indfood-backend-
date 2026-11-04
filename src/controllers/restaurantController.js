@@ -42,7 +42,7 @@ function registerRestaurant(req, res) {
       cuisine: cuisine.trim(),
       latitude: lat,
       longitude: lng,
-      commissionPercent: 15,
+      commissionPercent: (db.settings && db.settings.defaultRestaurantCommission !== undefined) ? db.settings.defaultRestaurantCommission : 15,
       isActive: true,
       isOpen: true,
       menu: [],
