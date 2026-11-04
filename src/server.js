@@ -95,6 +95,18 @@ app.get('/health', (req, res) => {
   });
 });
 
+app.get('/api/ping', (req, res) => {
+  res.json({ success: true, timestamp: Date.now() });
+});
+
+// Process-level crash guards: Ensure node never dies on unhandled blips
+process.on('uncaughtException', (err) => {
+  console.error('🛡️ Shield: Uncaught Exception intercepted:', err.message);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('🛡️ Shield: Unhandled Rejection intercepted:', reason);
+});
+
 // Catch-all 404 handler - Returns valid JSON, never HTML
 app.use((req, res) => {
   res.status(404).json({

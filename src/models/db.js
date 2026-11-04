@@ -3,6 +3,7 @@ const path = require('path');
 
 const DB_FILE = path.join(__dirname, '../../data/database.json');
 const TMP_FILE = path.join(__dirname, '../../data/database.json.tmp');
+const BAK_FILE = path.join(__dirname, '../../data/database.json.bak');
 
 // Initial clean schema defaults - ZERO fake data
 const defaultData = {
@@ -60,6 +61,7 @@ function ensureDbFile() {
   }
   if (!fs.existsSync(DB_FILE)) {
     fs.writeFileSync(DB_FILE, JSON.stringify(defaultData, null, 2), 'utf-8');
+    try { fs.copyFileSync(DB_FILE, BAK_FILE); } catch(e) {}
   }
 }
 
@@ -91,14 +93,40 @@ function normalizeDb(parsed) {
 
 function loadDbFromDisk() {
   ensureDbFile();
+  // 1. Try reading the primary DB file
   try {
     const raw = fs.readFileSync(DB_FILE, 'utf-8');
-    const parsed = JSON.parse(raw);
-    return normalizeDb(parsed);
+    if (raw && raw.trim().length > 10) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === 'object') {
+        // Keep backup in sync with verified healthy state
+        try { fs.copyFileSync(DB_FILE, BAK_FILE); } catch(e) {}
+        return normalizeDb(parsed);
+      }
+    }
   } catch (e) {
-    console.error('Error loading DB from disk, attempting backup or defaults:', e.message);
-    return normalizeDb(JSON.parse(JSON.stringify(defaultData)));
+    console.error('Primary DB file error, attempting recovery from backup:', e.message);
   }
+
+  // 2. Recovery: Try loading from backup file
+  try {
+    if (fs.existsSync(BAK_FILE)) {
+      const bakRaw = fs.readFileSync(BAK_FILE, 'utf-8');
+      if (bakRaw && bakRaw.trim().length > 10) {
+        const bakParsed = JSON.parse(bakRaw);
+        if (bakParsed && typeof bakParsed === 'object') {
+          console.warn('⚠️ Recovered INDFood DB from healthy backup file!');
+          fs.writeFileSync(DB_FILE, bakRaw, 'utf-8');
+          return normalizeDb(bakParsed);
+        }
+      }
+    }
+  } catch (bakErr) {
+    console.error('Backup recovery error:', bakErr.message);
+  }
+
+  console.warn('⚠️ Both primary and backup DB unavailable, initializing clean schema defaults');
+  return normalizeDb(JSON.parse(JSON.stringify(defaultData)));
 }
 
 function flushDbToDiskAtomic() {
@@ -111,10 +139,30 @@ function flushDbToDiskAtomic() {
 
   try {
     ensureDbFile();
+    if (!memoryDb || typeof memoryDb !== 'object') {
+      return;
+    }
     const dataStr = JSON.stringify(memoryDb, null, 2);
+    if (!dataStr || dataStr.length < 50) {
+      console.error('Refusing to flush corrupt or empty DB string');
+      return;
+    }
+
     // Write atomically via temporary file then atomic rename
     fs.writeFileSync(TMP_FILE, dataStr, 'utf-8');
-    fs.renameSync(TMP_FILE, DB_FILE);
+    
+    // Verify tmp file exists and has content before replacement
+    const stat = fs.statSync(TMP_FILE);
+    if (stat.size > 50) {
+      // Rotate existing DB to backup
+      try {
+        if (fs.existsSync(DB_FILE)) {
+          fs.copyFileSync(DB_FILE, BAK_FILE);
+        }
+      } catch (cpErr) {}
+
+      fs.renameSync(TMP_FILE, DB_FILE);
+    }
   } catch (err) {
     console.error('Atomic DB flush error:', err.message);
   } finally {
@@ -139,6 +187,16 @@ function writeDb(data) {
   flushDbToDiskAtomic();
   return memoryDb;
 }
+
+// Ensure flush on process exit
+process.on('exit', () => {
+  if (memoryDb) {
+    try {
+      const dataStr = JSON.stringify(memoryDb, null, 2);
+      fs.writeFileSync(DB_FILE, dataStr, 'utf-8');
+    } catch(e) {}
+  }
+});
 
 module.exports = {
   readDb,
