@@ -116,8 +116,8 @@
       "phone": "9174782706",
       "address": "Maksi road alert",
       "cuisine": "Veg & non Veg",
-      "latitude": null,
-      "longitude": null,
+      "latitude": 23.9857,
+      "longitude": 75.1918,
       "commissionPercent": 17,
       "isActive": true,
       "menu": [
@@ -196,6 +196,44 @@
       ],
       "createdAt": "2026-10-25T13:26:17.799Z",
       "isOpen": true
+    },
+    {
+      "id": "rest_mw2sqojx",
+      "name": "dev999844 Kitchen",
+      "phone": "9652125966",
+      "ownerEmail": "dev999844@gmail.com",
+      "address": "Rinda, Mandsaur Tahsil, Mandsaur",
+      "cuisine": "North Indian, Snacks, Thali",
+      "latitude": 23.98575826062623,
+      "longitude": 75.19185416198806,
+      "commissionPercent": 12,
+      "isActive": true,
+      "isOpen": true,
+      "menu": [
+        {
+          "id": "m_mw2sru3w",
+          "name": "Shahi Paneer Masala",
+          "description": "Rich royal cottage cheese in creamy tomato & butter gravy",
+          "price": 230,
+          "rating": 4.8,
+          "isVeg": true,
+          "category": "Main Course",
+          "image": "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=500&q=80",
+          "isAvailable": true
+        },
+        {
+          "id": "m_mw2sru3x",
+          "name": "Dal Tadka & Steamed Rice",
+          "description": "Yellow lentils tempered with cumin, garlic & desi ghee",
+          "price": 160,
+          "rating": 4.6,
+          "isVeg": true,
+          "category": "Main Course",
+          "image": "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80",
+          "isAvailable": true
+        }
+      ],
+      "createdAt": "2026-11-05T00:17:31.341Z"
     }
   ],
   "shifts": [
@@ -389,8 +427,8 @@
       "code": "SUPER50",
       "discount": 50,
       "minOrder": 100,
-      "title": "Super ₹50 Flat Off",
-      "description": "Instant ₹50 savings on all meals",
+      "title": "Super \u20b950 Flat Off",
+      "description": "Instant \u20b950 savings on all meals",
       "active": true,
       "usedBy": [
         "9876543210"
@@ -402,8 +440,8 @@
       "code": "DHAMAKA50",
       "discount": 50,
       "minOrder": 100,
-      "title": "Dhamaka ₹50 Flat Discount",
-      "description": "Use code DHAMAKA50 for ₹50 off on your food order",
+      "title": "Dhamaka \u20b950 Flat Discount",
+      "description": "Use code DHAMAKA50 for \u20b950 off on your food order",
       "active": true,
       "usedBy": [
         "9876543210"
@@ -415,8 +453,8 @@
       "code": "INDFOOD50",
       "discount": 50,
       "minOrder": 149,
-      "title": "Special ₹50 OFF",
-      "description": "Use code INDFOOD50 and get flat ₹50 OFF on your order.",
+      "title": "Special \u20b950 OFF",
+      "description": "Use code INDFOOD50 and get flat \u20b950 OFF on your order.",
       "active": true,
       "usedBy": [],
       "createdAt": "2026-10-29T01:46:25.450Z"

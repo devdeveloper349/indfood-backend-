@@ -253,8 +253,8 @@ function registerUser(req, res) {
           ownerEmail: cleanEmail,
           address: req.body.restaurantAddress || 'Main Market, City Center',
           cuisine: 'North Indian, Snacks, Thali',
-          latitude: req.body.latitude || null,
-          longitude: req.body.longitude || null,
+          latitude: (req.body.latitude && !isNaN(parseFloat(req.body.latitude))) ? parseFloat(req.body.latitude) : 23.9857,
+          longitude: (req.body.longitude && !isNaN(parseFloat(req.body.longitude))) ? parseFloat(req.body.longitude) : 75.1918,
           commissionPercent: (db.settings && db.settings.defaultRestaurantCommission !== undefined) ? db.settings.defaultRestaurantCommission : 15,
           isActive: true,
           isOpen: true,
@@ -265,8 +265,12 @@ function registerUser(req, res) {
       } else {
         if (req.body.restaurantName) restaurant.name = req.body.restaurantName;
         if (req.body.restaurantAddress) restaurant.address = req.body.restaurantAddress;
-        if (req.body.latitude) restaurant.latitude = req.body.latitude;
-        if (req.body.longitude) restaurant.longitude = req.body.longitude;
+        if (req.body.latitude && !isNaN(parseFloat(req.body.latitude))) restaurant.latitude = parseFloat(req.body.latitude);
+        if (req.body.longitude && !isNaN(parseFloat(req.body.longitude))) restaurant.longitude = parseFloat(req.body.longitude);
+        if (!restaurant.latitude) restaurant.latitude = 23.9857;
+        if (!restaurant.longitude) restaurant.longitude = 75.1918;
+        restaurant.isActive = true;
+        if (restaurant.isOpen === undefined) restaurant.isOpen = true;
         restaurant.phone = cleanPhone;
         restaurant.ownerEmail = cleanEmail;
       }

@@ -1,15 +1,89 @@
 const { readDb, writeDb } = require('../models/db');
 const { v4: uuidv4 } = require('uuid');
 
+/**
+ * Robust restaurant finder with auto-healing
+ */
+function findOrEnsureRestaurant(db, params = {}) {
+  const { restaurantId, id, phone, ownerPhone, ownerEmail, email, name, restaurantName } = params;
+  const rawId = String(restaurantId || id || '').trim();
+  const rawPhone = String(phone || ownerPhone || (rawId.replace(/\D/g, '').length >= 10 ? rawId : '')).trim();
+  const cleanPhone = rawPhone.replace(/\D/g, '').slice(-10);
+  const rawEmail = String(ownerEmail || email || '').trim().toLowerCase();
+
+  db.restaurants = db.restaurants || [];
+  let rest = db.restaurants.find(r => {
+    if (!r) return false;
+    if (rawId && r.id === rawId) return true;
+    if (cleanPhone && cleanPhone.length === 10 && r.phone && r.phone.replace(/\D/g, '').slice(-10) === cleanPhone) return true;
+    if (rawEmail && r.ownerEmail && r.ownerEmail.toLowerCase() === rawEmail) return true;
+    return false;
+  });
+
+  if (rest) {
+    if (!Array.isArray(rest.menu)) rest.menu = [];
+    if (rest.isActive === undefined) rest.isActive = true;
+    if (rest.isOpen === undefined) rest.isOpen = true;
+    return rest;
+  }
+
+  // Check in db.users for restaurant role
+  db.users = db.users || [];
+  const user = db.users.find(u => {
+    if (!u) return false;
+    if (rawId && (u.id === rawId || u.restaurantId === rawId)) return true;
+    if (cleanPhone && cleanPhone.length === 10 && u.phone && u.phone.replace(/\D/g, '').slice(-10) === cleanPhone) return true;
+    if (rawEmail && u.email && u.email.toLowerCase() === rawEmail) return true;
+    return false;
+  });
+
+  if (rawId || cleanPhone || user) {
+    const restName = name || restaurantName || (user ? (user.restaurantName || user.name) : 'Kitchen');
+    const restPhone = cleanPhone || (user ? user.phone : '9174782706');
+    const restEmail = rawEmail || (user ? user.email : '');
+    const newRestId = rawId && rawId.startsWith('rest_') ? rawId : `rest_${Date.now().toString(36)}`;
+
+    rest = {
+      id: newRestId,
+      name: restName,
+      phone: restPhone,
+      ownerEmail: restEmail,
+      address: (user && user.restaurantAddress) ? user.restaurantAddress : 'Main Market, City Center',
+      cuisine: 'North Indian, Snacks, Thali',
+      latitude: (user && user.latitude) ? parseFloat(user.latitude) : 23.9857,
+      longitude: (user && user.longitude) ? parseFloat(user.longitude) : 75.1918,
+      commissionPercent: (db.settings && db.settings.defaultRestaurantCommission !== undefined) ? db.settings.defaultRestaurantCommission : 15,
+      isActive: true,
+      isOpen: true,
+      menu: [],
+      createdAt: new Date().toISOString()
+    };
+    db.restaurants.push(rest);
+    writeDb(db);
+    return rest;
+  }
+
+  return null;
+}
+
 function getAllRestaurants(req, res) {
   const db = readDb();
+  db.restaurants = db.restaurants || [];
+  
+  // Ensure restaurants have valid status flags
+  db.restaurants.forEach(r => {
+    if (r.isActive === undefined) r.isActive = true;
+    if (r.isOpen === undefined) r.isOpen = true;
+    if (!Array.isArray(r.menu)) r.menu = [];
+  });
+
   return res.json({ success: true, restaurants: db.restaurants });
 }
 
 function getRestaurantById(req, res) {
   const { id } = req.params;
   const db = readDb();
-  const rest = db.restaurants.find(r => r.id === id);
+  const rest = findOrEnsureRestaurant(db, { id, restaurantId: id });
   if (!rest) {
     return res.status(404).json({ success: false, message: 'Restaurant not found' });
   }
@@ -24,40 +98,22 @@ function registerRestaurant(req, res) {
 
   const cleanPhone = phone.toString().trim().replace(/\D/g, '').slice(-10);
   const db = readDb();
-  let rest = db.restaurants.find(r => r.phone === cleanPhone || (ownerEmail && r.ownerEmail === ownerEmail));
+  let rest = findOrEnsureRestaurant(db, { name, phone: cleanPhone, address, cuisine, latitude, longitude, ownerEmail });
   
   const hasValidLat = latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude));
   const hasValidLng = longitude !== undefined && longitude !== null && !isNaN(parseFloat(longitude));
-  const lat = hasValidLat ? parseFloat(latitude) : null;
-  const lng = hasValidLng ? parseFloat(longitude) : null;
+  const lat = hasValidLat ? parseFloat(latitude) : 23.9857;
+  const lng = hasValidLng ? parseFloat(longitude) : 75.1918;
 
-  if (!rest) {
-    const id = `rest_${Date.now().toString(36)}`;
-    rest = {
-      id,
-      name: name.trim(),
-      phone: cleanPhone,
-      ownerEmail: ownerEmail || '',
-      address: address ? address.trim() : 'Location not set yet',
-      cuisine: cuisine.trim(),
-      latitude: lat,
-      longitude: lng,
-      commissionPercent: (db.settings && db.settings.defaultRestaurantCommission !== undefined) ? db.settings.defaultRestaurantCommission : 15,
-      isActive: true,
-      isOpen: true,
-      menu: [],
-      createdAt: new Date().toISOString()
-    };
-    db.restaurants.push(rest);
-    writeDb(db);
-  } else {
-    // Update existing restaurant with custom owner details
+  if (rest) {
     rest.name = name.trim();
     if (address) rest.address = address.trim();
     if (hasValidLat) rest.latitude = lat;
     if (hasValidLng) rest.longitude = lng;
     if (cuisine) rest.cuisine = cuisine.trim();
     if (ownerEmail) rest.ownerEmail = ownerEmail;
+    rest.isActive = true;
+    rest.isOpen = true;
     writeDb(db);
   }
 
@@ -67,7 +123,7 @@ function registerRestaurant(req, res) {
 function updateRestaurantLocation(req, res) {
   const { restaurantId, latitude, longitude, address } = req.body;
   const db = readDb();
-  const rest = db.restaurants.find(r => r.id === restaurantId);
+  const rest = findOrEnsureRestaurant(db, req.body);
   if (!rest) return res.status(404).json({ success: false, message: 'Restaurant not found' });
 
   if (latitude !== undefined && latitude !== null && !isNaN(parseFloat(latitude))) {
@@ -86,12 +142,12 @@ function updateRestaurantLocation(req, res) {
 
 function addMenuItem(req, res) {
   const { restaurantId, name, description = '', price, rating = 4.5, isVeg = true, category = 'Main Course', image = '' } = req.body;
-  if (!restaurantId || !name || price === undefined || price === null || price === '') {
+  if (!name || price === undefined || price === null || price === '') {
     return res.status(400).json({ success: false, message: 'Restaurant ID, item name, and price are required' });
   }
 
   const db = readDb();
-  const rest = db.restaurants.find(r => r.id === restaurantId);
+  const rest = findOrEnsureRestaurant(db, req.body);
   if (!rest) {
     return res.status(404).json({ success: false, message: 'Restaurant not found' });
   }
@@ -115,34 +171,39 @@ function addMenuItem(req, res) {
   rest.menu.push(newItem);
   writeDb(db);
 
-  return res.json({ success: true, message: 'Menu item added successfully', item: newItem, menu: rest.menu });
+  if (req.io) {
+    req.io.emit('restaurant_menu_updated', { restaurantId: rest.id, item: newItem, menu: rest.menu });
+    req.io.emit('global_order_update');
+  }
+
+  return res.json({ success: true, message: 'Menu item added successfully', item: newItem, menu: rest.menu, restaurant: rest });
 }
 
 function toggleItemAvailability(req, res) {
   const { restaurantId, itemId } = req.body;
   const db = readDb();
-  const rest = db.restaurants.find(r => r.id === restaurantId);
+  const rest = findOrEnsureRestaurant(db, req.body);
   if (!rest) return res.status(404).json({ success: false, message: 'Restaurant not found' });
 
-  const item = rest.menu.find(m => m.id === itemId);
+  const item = (rest.menu || []).find(m => m.id === itemId);
   if (!item) return res.status(404).json({ success: false, message: 'Item not found' });
 
   item.isAvailable = item.isAvailable === false ? true : false;
   writeDb(db);
 
-  return res.json({ success: true, message: `Item is now ${item.isAvailable ? 'In Stock' : 'Out of Stock'}`, item });
+  return res.json({ success: true, message: `Item is now ${item.isAvailable ? 'In Stock' : 'Out of Stock'}`, item, menu: rest.menu });
 }
 
 function toggleRestaurantStatus(req, res) {
   const { restaurantId } = req.body;
   const db = readDb();
-  const rest = db.restaurants.find(r => r.id === restaurantId);
+  const rest = findOrEnsureRestaurant(db, req.body);
   if (!rest) return res.status(404).json({ success: false, message: 'Restaurant not found' });
 
   rest.isOpen = rest.isOpen === false ? true : false;
   writeDb(db);
 
-  return res.json({ success: true, message: `Restaurant is now ${rest.isOpen ? 'ONLINE' : 'OFFLINE'}`, isOpen: rest.isOpen });
+  return res.json({ success: true, message: `Restaurant is now ${rest.isOpen ? 'ONLINE' : 'OFFLINE'}`, isOpen: rest.isOpen, restaurant: rest });
 }
 
 module.exports = {
