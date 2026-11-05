@@ -873,7 +873,7 @@ async function checkCodQrPayment(req, res) {
  * 2) ONLINE_QR: Customer paid via dynamic QR -> NO cash deduction, payout added to rider wallet.
  */
 function completeDelivery(req, res) {
-  const { orderId, riderUserId, paymentType = 'CASH' } = req.body;
+  const { orderId, riderUserId, paymentType = 'CASH', deliveryProofPhoto } = req.body;
   const db = readDb();
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
@@ -882,6 +882,9 @@ function completeDelivery(req, res) {
 
   order.orderStatus = 'DELIVERED';
   order.deliveredAt = new Date().toISOString();
+  if (deliveryProofPhoto) {
+    order.deliveryProofPhoto = deliveryProofPhoto;
+  }
 
   const totalOrderPaid = (order.financials && order.financials.customerTotalPaid) || 0;
   const payout = (order.financials && order.financials.riderPayout) || 40;
