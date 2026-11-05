@@ -209,30 +209,7 @@
       "commissionPercent": 12,
       "isActive": true,
       "isOpen": true,
-      "menu": [
-        {
-          "id": "m_mw2sru3w",
-          "name": "Shahi Paneer Masala",
-          "description": "Rich royal cottage cheese in creamy tomato & butter gravy",
-          "price": 230,
-          "rating": 4.8,
-          "isVeg": true,
-          "category": "Main Course",
-          "image": "https://images.unsplash.com/photo-1565557623262-b51c2513a641?w=500&q=80",
-          "isAvailable": true
-        },
-        {
-          "id": "m_mw2sru3x",
-          "name": "Dal Tadka & Steamed Rice",
-          "description": "Yellow lentils tempered with cumin, garlic & desi ghee",
-          "price": 160,
-          "rating": 4.6,
-          "isVeg": true,
-          "category": "Main Course",
-          "image": "https://images.unsplash.com/photo-1546833999-b9f581a1996d?w=500&q=80",
-          "isAvailable": true
-        }
-      ],
+      "menu": [],
       "createdAt": "2026-11-05T00:17:31.341Z"
     }
   ],
