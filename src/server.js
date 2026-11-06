@@ -6,6 +6,7 @@ const { Server } = require('socket.io');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const apiRoutes = require('./routes/api');
+const trackingManager = require('./services/trackingManager');
 
 const app = express();
 const server = http.createServer(app);
@@ -36,18 +37,12 @@ app.use((err, req, res, next) => {
 io.on('connection', (socket) => {
   console.log('⚡ Client connected to INDFood Live Socket:', socket.id);
 
-  socket.on('join_order', (orderId) => {
-    socket.join(`order_${orderId}`);
+  socket.on('join_order', (data) => {
+    trackingManager.authorizeAndJoinOrder(socket, data, io);
   });
 
   socket.on('rider_location_update', (data) => {
-    const { orderId, latitude, longitude, riderId } = data;
-    io.to(`order_${orderId}`).emit('rider_position', {
-      latitude,
-      longitude,
-      riderId,
-      updatedAt: new Date().toISOString()
-    });
+    trackingManager.updateLocation({ ...data, socketId: socket.id, io });
   });
 
   socket.on('order_status_change', (data) => {
@@ -65,9 +60,12 @@ io.on('connection', (socket) => {
   });
 
   socket.on('disconnect', () => {
-    // disconnected
+    trackingManager.handleSocketDisconnect(socket.id, io);
   });
 });
+
+// Start background stale location checker (detects signal loss >30s)
+trackingManager.startStaleChecker(io);
 
 app.use((req, res, next) => {
   req.io = io;

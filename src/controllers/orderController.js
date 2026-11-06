@@ -2,6 +2,7 @@ const { readDb, writeDb } = require('../models/db');
 const { generateOrderId, generateDeliveryOtp, generatePermanentRiderId } = require('../utils/idGenerator');
 const { calculateOrderFinancials } = require('../utils/pricingEngine');
 const razorpay = require('../config/razorpay');
+const trackingManager = require('../services/trackingManager');
 
 /**
  * Robust rider finder with automatic self-healing
@@ -278,6 +279,21 @@ function getOrderDetails(req, res) {
     if (!order.restaurantLat && rest.latitude) order.restaurantLat = parseFloat(rest.latitude);
     if (!order.restaurantLng && rest.longitude) order.restaurantLng = parseFloat(rest.longitude);
   }
+
+  // Pure RAM Live Location attachment
+  const liveLoc = trackingManager.getLocation(orderId);
+  if (liveLoc) {
+    order.riderLat = liveLoc.latitude;
+    order.riderLng = liveLoc.longitude;
+    order.riderLocationUpdatedAt = liveLoc.updatedAt;
+    order.riderLocationStatus = liveLoc.status;
+    order.isRiderOnline = liveLoc.isOnline;
+  } else {
+    // If no fresh GPS received since restart or inactive
+    order.riderLocationStatus = (order.riderLat && order.riderLng) ? 'WAITING_FOR_GPS' : 'NO_GPS';
+    order.isRiderOnline = false;
+  }
+
   return res.json({ success: true, order });
 }
 
@@ -450,6 +466,10 @@ function updateOrderStatus(req, res) {
     dispatchRadarRider(order, db);
   }
 
+  if (status === 'CANCELLED') {
+    trackingManager.clearLocation(orderId, 'CANCELLED');
+  }
+
   writeDb(db);
 
   if (req.io) {
@@ -482,6 +502,8 @@ function riderRejectOrder(req, res) {
   }
   order.targetedRiderId = null;
   order.targetedRiderExpiresAt = null;
+
+  trackingManager.clearLocation(orderId, 'REASSIGNED');
 
   dispatchRadarRider(order, db);
   writeDb(db);
@@ -532,6 +554,9 @@ function riderAcceptOrder(req, res) {
   order.acceptedByRiderAt = new Date().toISOString();
   order.riderArrivedAtRestaurant = false;
   order.foodHandedOver = false;
+
+  // Clear any prior tracking session for clean start with new assigned rider
+  trackingManager.clearLocation(orderId, 'REASSIGNED');
 
   // Real 2-Leg Dynamic Distance Calculation: (Rider -> Restaurant) + (Restaurant -> Customer)
   const riderLat = req.body.riderLat || req.body.latitude;
@@ -886,6 +911,9 @@ function completeDelivery(req, res) {
     order.deliveryProofPhoto = deliveryProofPhoto;
   }
 
+  // Clear live tracking session from RAM upon successful delivery
+  trackingManager.clearLocation(orderId, 'DELIVERED');
+
   const totalOrderPaid = (order.financials && order.financials.customerTotalPaid) || 0;
   const payout = (order.financials && order.financials.riderPayout) || 40;
 
@@ -963,7 +991,7 @@ function verifyDeliveryOtp(req, res) {
 }
 
 /**
- * Update live rider location coordinates
+ * Update live rider location coordinates in RAM (Zero disk I/O)
  */
 function updateRiderLocation(req, res) {
   try {
@@ -972,51 +1000,24 @@ function updateRiderLocation(req, res) {
     if (latitude === undefined || longitude === undefined) {
       return res.status(400).json({ success: false, message: 'Latitude and Longitude required' });
     }
-    const db = readDb();
-    let updatedOrder = null;
-    const lat = parseFloat(latitude);
-    const lng = parseFloat(longitude);
 
-    if (orderId) {
-      const order = db.orders.find(o => o.orderId === orderId);
-      if (order) {
-        order.riderLat = lat;
-        order.riderLng = lng;
-        order.riderLocationUpdatedAt = new Date().toISOString();
-        updatedOrder = order;
-      }
+    const result = trackingManager.updateLocation({
+      orderId,
+      riderId: effectiveRiderId,
+      latitude,
+      longitude,
+      io: req.io
+    });
+
+    if (!result.success) {
+      return res.status(400).json(result);
     }
 
-    if (effectiveRiderId) {
-      const rider = db.riders.find(r => r.userId === effectiveRiderId || r.permanentRiderId === effectiveRiderId || r.phone === effectiveRiderId);
-      if (rider) {
-        rider.latitude = lat;
-        rider.longitude = lng;
-        rider.lastLocationUpdate = new Date().toISOString();
-      }
-    }
-
-    writeDb(db);
-
-    if (req.io) {
-      if (orderId) {
-        req.io.to(`order_${orderId}`).emit('rider_position', {
-          orderId,
-          latitude: lat,
-          longitude: lng,
-          riderUserId,
-          updatedAt: new Date().toISOString()
-        });
-      }
-      req.io.emit('rider_location_broadcast', {
-        orderId,
-        riderUserId,
-        latitude: lat,
-        longitude: lng
-      });
-    }
-
-    return res.json({ success: true, message: 'Rider location updated', order: updatedOrder });
+    return res.json({
+      success: true,
+      message: 'Rider location updated in RAM',
+      location: result.location
+    });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
   }
@@ -1030,6 +1031,7 @@ function cancelUnpaidOrder(req, res) {
   const db = readDb();
   const idx = db.orders.findIndex(o => o.orderId === orderId && (o.orderStatus === 'PENDING_PAYMENT' || o.paymentStatus === 'PAYMENT_PENDING'));
   if (idx !== -1) {
+    trackingManager.clearLocation(orderId, 'CANCELLED');
     db.orders.splice(idx, 1);
     writeDb(db);
     return res.json({ success: true, message: 'Unpaid cancelled order removed successfully', orderId });
