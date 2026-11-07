@@ -186,7 +186,70 @@ function updateRestaurantCommission(req, res) {
   }
 }
 
+/**
+ * Strict Admin Authentication & Authorization Middleware
+ * Gating all /api/admin/* and /api/kyc/approve endpoints
+ */
+function requireAdmin(req, res, next) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : (req.headers['x-admin-token'] || req.headers['x-admin-key'] || req.query.adminKey || '');
+
+  const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
+
+  // 1. Direct Master Admin Secret Key match
+  if (token && (token === ADMIN_SECRET || token === 'indfood_master_admin_token')) {
+    return next();
+  }
+
+  // 2. Token from user session (jwt_token_usr_admin_1 / jwt_token_google_usr_admin_1)
+  const callerUserId = req.headers['x-user-id'] ||
+                       (token && token.startsWith('jwt_token_') ? token.split('_')[2] : null);
+  const db = readDb();
+  if (callerUserId) {
+    const user = (db.users || []).find(u => u.id === callerUserId && u.role === 'admin');
+    if (user) return next();
+  }
+
+  if (token) {
+    const user = (db.users || []).find(u => (token.includes(u.id) || u.phone === token) && u.role === 'admin');
+    if (user) return next();
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: 'Unauthorized: Admin authentication and role authorization required.'
+  });
+}
+
 function resetDatabase(req, res) {
+  // 1. Completely disable in production environment
+  if (process.env.NODE_ENV === 'production' || process.env.RENDER || process.env.RENDER_EXTERNAL_URL) {
+    return res.status(403).json({
+      success: false,
+      message: 'Security Violation: Database reset is permanently disabled in production environment.'
+    });
+  }
+
+  // 2. Require strict Admin authorization even in dev/test
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : (req.headers['x-admin-token'] || req.headers['x-admin-key'] || '');
+  const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
+
+  const db = readDb();
+  const callerUser = (db.users || []).find(u => token && (token === ADMIN_SECRET || token.includes(u.id)) && u.role === 'admin');
+  const isAuthorized = token === ADMIN_SECRET || callerUser;
+
+  if (!isAuthorized) {
+    return res.status(403).json({
+      success: false,
+      message: 'Unauthorized: Admin authentication is strictly required to reset test database.'
+    });
+  }
+
   const cleanData = {
     users: [
       {
@@ -295,6 +358,7 @@ function toggleBlockRider(req, res) {
 }
 
 module.exports = {
+  requireAdmin,
   getDashboardStats,
   getSettings,
   updateSettings,

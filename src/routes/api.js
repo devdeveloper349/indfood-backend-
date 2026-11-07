@@ -25,9 +25,9 @@ router.get('/auth/profile/:userId', authController.getUserProfile);
 router.post('/kyc/submit', kycController.submitKyc);
 router.post('/rider/login', kycController.riderLogin);
 router.get('/kyc/status', kycController.getRiderStatus);
-router.post('/kyc/approve', kycController.approveKyc); // generates permanent random ID (INDF-RD-XXXXX)
-router.post('/kyc/reject', kycController.rejectKyc);
-router.get('/kyc/pending', kycController.getPendingKycList);
+router.post('/kyc/approve', adminController.requireAdmin, kycController.approveKyc); // Admin gated
+router.post('/kyc/reject', adminController.requireAdmin, kycController.rejectKyc);   // Admin gated
+router.get('/kyc/pending', adminController.requireAdmin, kycController.getPendingKycList); // Admin gated
 
 // 3. Shift routes (Delivery Partner)
 router.get('/shifts', shiftController.getShifts);
@@ -63,6 +63,8 @@ router.post('/promocodes/toggle', promoController.togglePromoStatus);
 // 5. Razorpay Payment routes
 router.get('/payment/key', paymentController.getRazorpayKey);
 router.post('/payment/verify', paymentController.verifyPayment);
+router.post('/orders/razorpay-webhook', paymentController.handleRazorpayWebhook);
+router.post('/payments/webhook', paymentController.handleRazorpayWebhook);
 
 // 6. Restaurant routes
 router.get('/restaurants', restaurantController.getAllRestaurants);
@@ -73,16 +75,16 @@ router.post('/restaurants/menu', restaurantController.addMenuItem);
 router.post('/restaurants/menu/toggle', restaurantController.toggleItemAvailability);
 router.post('/restaurants/toggle-status', restaurantController.toggleRestaurantStatus);
 
-// 7. Admin routes
+// 7. Admin routes (Protected by requireAdmin)
 router.get('/settings', adminController.getSettings);
-router.get('/admin/dashboard', adminController.getDashboardStats);
-router.get('/admin/settings', adminController.getSettings);
-router.post('/admin/settings', adminController.updateSettings);
-router.get('/admin/restaurants', adminController.getAdminRestaurants);
-router.post('/admin/restaurant-commission', adminController.updateRestaurantCommission);
-router.post('/admin/commission', adminController.updatePlatformCommission);
-router.post('/admin/reset-database', adminController.resetDatabase);
-router.get('/admin/rider-lookup', adminController.lookupRider);
-router.post('/admin/rider-toggle-block', adminController.toggleBlockRider);
+router.get('/admin/dashboard', adminController.requireAdmin, adminController.getDashboardStats);
+router.get('/admin/settings', adminController.requireAdmin, adminController.getSettings);
+router.post('/admin/settings', adminController.requireAdmin, adminController.updateSettings);
+router.get('/admin/restaurants', adminController.requireAdmin, adminController.getAdminRestaurants);
+router.post('/admin/restaurant-commission', adminController.requireAdmin, adminController.updateRestaurantCommission);
+router.post('/admin/commission', adminController.requireAdmin, adminController.updatePlatformCommission);
+router.post('/admin/reset-database', adminController.requireAdmin, adminController.resetDatabase);
+router.get('/admin/rider-lookup', adminController.requireAdmin, adminController.lookupRider);
+router.post('/admin/rider-toggle-block', adminController.requireAdmin, adminController.toggleBlockRider);
 
 module.exports = router;

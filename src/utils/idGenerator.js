@@ -29,10 +29,10 @@ function generateOrderId() {
 }
 
 /**
- * 4-digit Pickup & Delivery Token generator
+ * 4-digit Cryptographically Secure Delivery OTP generator (1000-9999)
  */
 function generateDeliveryOtp() {
-  return Math.floor(1000 + Math.random() * 9000).toString();
+  return crypto.randomInt(1000, 10000).toString();
 }
 
 module.exports = {
