@@ -1,4 +1,5 @@
 const crypto = require('crypto');
+const razorpay = require('../config/razorpay');
 const { readDb, writeDb } = require('../models/db');
 require('dotenv').config();
 
@@ -20,14 +21,11 @@ function getRazorpayKey(req, res) {
 }
 
 /**
- * Verifies Razorpay payment signature with strict Idempotency & Lifecycle Status Protection
- * Guarding against:
- * 1) Duplicate / Replay payment verification calls
- * 2) Reversing PREPARING, ON_THE_WAY, DELIVERED orders back to PLACED
- * 3) Reversing CANCELLED orders back to PLACED
- * 4) Duplicate merchant notifications & duplicate wallet credits
+ * Verifies Razorpay payment with strict cryptographic verification,
+ * direct Razorpay server-side payment entity fetch, amount/orderId matching,
+ * and Idempotency & Lifecycle Status Protection.
  */
-function verifyPayment(req, res) {
+async function verifyPayment(req, res) {
   try {
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderId } = req.body;
 
@@ -35,7 +33,15 @@ function verifyPayment(req, res) {
       return res.status(400).json({ success: false, message: 'Incomplete payment credentials' });
     }
 
-    const keySecret = process.env.RAZORPAY_KEY_SECRET || '42zBkhYMQAsU6aRgsQMM1d45';
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: 'Order ID is required for verification' });
+    }
+
+    // 1. Strict HMAC-SHA256 signature verification (B.1)
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) {
+      return res.status(500).json({ success: false, message: 'Server configuration error: Razorpay secret not configured' });
+    }
     const body = razorpay_order_id + '|' + razorpay_payment_id;
 
     const expectedSignature = crypto
@@ -49,26 +55,41 @@ function verifyPayment(req, res) {
       return res.status(400).json({ success: false, message: 'Invalid payment signature! Fraud warning.' });
     }
 
+    // Lookup local order in DB
     const db = readDb();
-    const order = (db.orders || []).find(o => o.orderId === orderId || (o.razorpayOrderId && o.razorpayOrderId === razorpay_order_id));
+    const order = (db.orders || []).find(o => o.orderId === orderId);
     if (!order) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    // --- IDEMPOTENCY & STATUS INTEGRITY GUARDS ---
+    // 2. Enforce strict matching between local order's razorpayOrderId and verification order ID (B.2)
+    if (!order.razorpayOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Local order has no Razorpay order registered.'
+      });
+    }
+    if (order.razorpayOrderId !== razorpay_order_id) {
+      return res.status(400).json({
+        success: false,
+        message: `Razorpay Order ID mismatch: Submitted '${razorpay_order_id}' does not match registered order '${order.razorpayOrderId}'`
+      });
+    }
 
-    // 1. Exact Duplicate Payment ID (Idempotent 200 OK)
+    // --- IDEMPOTENCY & STATUS INTEGRITY GUARDS (B.6) ---
+
+    // A. Exact Duplicate Payment ID on already-paid order (Idempotent 200 OK)
     if (order.paymentStatus === 'PAID' && order.razorpayPaymentId === razorpay_payment_id) {
       return res.json({
         success: true,
         isDuplicate: true,
         message: 'Payment already verified and recorded for this order.',
         paymentId: razorpay_payment_id,
-        order
+        order: sanitizeOrder(order)
       });
     }
 
-    // 2. Conflicting Payment ID on already-paid order (Reject Replay Attack)
+    // B. Conflicting Payment ID on already-paid order (Reject Replay Attack)
     if (order.paymentStatus === 'PAID' && order.razorpayPaymentId && order.razorpayPaymentId !== razorpay_payment_id) {
       return res.status(409).json({
         success: false,
@@ -77,7 +98,7 @@ function verifyPayment(req, res) {
       });
     }
 
-    // 3. Status Guard: Order was already CANCELLED
+    // C. Status Guard: Order was already CANCELLED
     if (order.orderStatus === 'CANCELLED') {
       order.paymentStatus = 'REFUND_PENDING';
       order.cancelledPaymentId = razorpay_payment_id;
@@ -89,8 +110,66 @@ function verifyPayment(req, res) {
       });
     }
 
-    // 4. Status Guard: Order is already in active or terminal stage
-    // (Never revert PREPARING, ACCEPTED, ON_THE_WAY, DELIVERED back to PLACED)
+    // 3. Fetch actual payment details from Razorpay using server-side API (B.3)
+    let paymentRecord = null;
+    try {
+      paymentRecord = await razorpay.payments.fetch(razorpay_payment_id);
+    } catch (fetchErr) {
+      const errMsg = fetchErr.error ? fetchErr.error.description : fetchErr.message;
+      return res.status(400).json({
+        success: false,
+        message: `Failed to fetch payment details from Razorpay: ${errMsg}`
+      });
+    }
+
+    if (!paymentRecord) {
+      return res.status(400).json({ success: false, message: 'Unable to retrieve payment record from Razorpay.' });
+    }
+
+    // 4. Verify all critical attributes (B.4 & B.5)
+
+    // a. Payment ID matches submitted payment ID
+    if (paymentRecord.id !== razorpay_payment_id) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment ID mismatch: Razorpay payment id '${paymentRecord.id}' does not match '${razorpay_payment_id}'`
+      });
+    }
+
+    // b. Razorpay Order ID matches local order
+    if (paymentRecord.order_id !== order.razorpayOrderId) {
+      return res.status(400).json({
+        success: false,
+        message: `Razorpay Order ID mismatch: Razorpay payment is linked to '${paymentRecord.order_id}', but expected '${order.razorpayOrderId}'`
+      });
+    }
+
+    // c. Actual payment amount matches expected order amount in paise
+    const expectedAmountPaise = Math.round(order.financials.customerTotalPaid * 100);
+    if (parseInt(paymentRecord.amount, 10) !== expectedAmountPaise) {
+      return res.status(400).json({
+        success: false,
+        message: `Payment amount mismatch: Expected ₹${(expectedAmountPaise / 100).toFixed(2)} (${expectedAmountPaise} paise), but Razorpay captured ₹${(paymentRecord.amount / 100).toFixed(2)} (${paymentRecord.amount} paise)`
+      });
+    }
+
+    // d. Currency matches INR
+    if (paymentRecord.currency !== 'INR') {
+      return res.status(400).json({
+        success: false,
+        message: `Payment currency mismatch: Expected INR, got '${paymentRecord.currency}'`
+      });
+    }
+
+    // e. Payment status is captured before marking order PAID
+    if (paymentRecord.status !== 'captured') {
+      return res.status(400).json({
+        success: false,
+        message: `Payment is not in captured status. Current Razorpay status: '${paymentRecord.status}'`
+      });
+    }
+
+    // 5. Status Guards for Active Stages: Never revert active stages back to PLACED
     const POST_PLACED_STATUSES = [
       'PLACED',
       'ACCEPTED',
@@ -115,11 +194,11 @@ function verifyPayment(req, res) {
         success: true,
         message: `Payment confirmed. Active order status '${order.orderStatus}' strictly preserved.`,
         paymentId: razorpay_payment_id,
-        order
+        order: sanitizeOrder(order)
       });
     }
 
-    // 5. Initial Transition for Unpaid Order (PENDING_PAYMENT / PAYMENT_PENDING -> PLACED)
+    // Initial Transition for Unpaid Order (PENDING_PAYMENT / PAYMENT_PENDING -> PLACED)
     order.paymentStatus = 'PAID';
     order.orderStatus = 'PLACED';
     order.razorpayPaymentId = razorpay_payment_id;
@@ -136,7 +215,7 @@ function verifyPayment(req, res) {
       success: true,
       message: 'Payment verified successfully! Money secured in Owner Razorpay account.',
       paymentId: razorpay_payment_id,
-      order
+      order: sanitizeOrder(order)
     });
   } catch (error) {
     console.error('Payment verify error:', error);

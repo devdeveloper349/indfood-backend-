@@ -102,10 +102,20 @@ function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
   return Math.max(0.5, Math.round(dist * 10) / 10);
 }
 
+// In-memory active idempotency locks to serialize concurrent creation attempts
+const activeIdempotencyLocks = new Map();
+
 /**
- * Customer creates an order
+ * Customer creates an order with server-side Idempotency and Concurrent Duplicate Protection
  */
 async function createOrder(req, res) {
+  const idempotencyKey = (req.body && req.body.idempotencyKey)
+    ? String(req.body.idempotencyKey).trim()
+    : (req.headers['x-idempotency-key'] ? String(req.headers['x-idempotency-key']).trim() : null);
+
+  let lockResolver = null;
+  let lockRejecter = null;
+
   try {
     const {
       customerId,
@@ -132,9 +142,61 @@ async function createOrder(req, res) {
       return res.status(400).json({ success: false, message: 'Customer ka 10-digit mobile number bharna anivarya hai' });
     }
 
+    // --- SERVER-SIDE IDEMPOTENCY CHECK ---
+    if (idempotencyKey) {
+      const dbCheck = readDb();
+      const existingOrder = (dbCheck.orders || []).find(o => o.idempotencyKey === idempotencyKey);
+      if (existingOrder) {
+        return res.json({
+          success: true,
+          isIdempotentReplay: true,
+          message: 'Order already created (idempotent replay)',
+          order: existingOrder,
+          razorpayOrder: existingOrder.razorpayOrderId ? {
+            id: existingOrder.razorpayOrderId,
+            amount: Math.round(existingOrder.financials.customerTotalPaid * 100),
+            currency: 'INR',
+            key: process.env.RAZORPAY_KEY_ID || 'rzp_live_TqxS4IwcLyKe3t'
+          } : null
+        });
+      }
+
+      // Check if a concurrent request with the SAME idempotency key is currently processing
+      if (activeIdempotencyLocks.has(idempotencyKey)) {
+        try {
+          const inFlightOrder = await activeIdempotencyLocks.get(idempotencyKey);
+          return res.json({
+            success: true,
+            isIdempotentReplay: true,
+            message: 'Order already created (concurrent idempotent replay)',
+            order: inFlightOrder,
+            razorpayOrder: inFlightOrder.razorpayOrderId ? {
+              id: inFlightOrder.razorpayOrderId,
+              amount: Math.round(inFlightOrder.financials.customerTotalPaid * 100),
+              currency: 'INR',
+              key: process.env.RAZORPAY_KEY_ID || 'rzp_live_TqxS4IwcLyKe3t'
+            } : null
+          });
+        } catch (concurrentErr) {
+          return res.status(500).json({
+            success: false,
+            message: 'Concurrent order creation failed: ' + concurrentErr.message
+          });
+        }
+      }
+
+      // Synchronously acquire in-flight concurrency lock
+      const lockPromise = new Promise((resolve, reject) => {
+        lockResolver = resolve;
+        lockRejecter = reject;
+      });
+      activeIdempotencyLocks.set(idempotencyKey, lockPromise);
+    }
+
     const db = readDb();
     const restaurant = db.restaurants.find(r => r.id === restaurantId);
     if (!restaurant) {
+      if (idempotencyKey) activeIdempotencyLocks.delete(idempotencyKey);
       return res.status(404).json({ success: false, message: 'Restaurant not found' });
     }
 
@@ -221,6 +283,7 @@ async function createOrder(req, res) {
 
     const newOrder = {
       orderId,
+      idempotencyKey: idempotencyKey || null,
       customerId: customerId || 'cust_demo',
       customerName,
       customerPhone,
@@ -255,6 +318,14 @@ async function createOrder(req, res) {
     db.orders.push(newOrder);
     writeDb(db);
 
+    // Resolve in-flight idempotency concurrency lock
+    if (idempotencyKey && lockResolver) {
+      lockResolver(newOrder);
+      setTimeout(() => {
+        activeIdempotencyLocks.delete(idempotencyKey);
+      }, 15000);
+    }
+
     // If online, do NOT broadcast to restaurant or riders until payment is verified!
     if (paymentMethod !== 'ONLINE' && req.io) {
       const broadcastOrder = sanitizeOrderForNonCustomer(newOrder);
@@ -274,6 +345,10 @@ async function createOrder(req, res) {
       } : null
     });
   } catch (error) {
+    if (idempotencyKey && lockRejecter) {
+      lockRejecter(error);
+      activeIdempotencyLocks.delete(idempotencyKey);
+    }
     console.error('Create order error:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
