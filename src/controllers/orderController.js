@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const { readDb, writeDb } = require('../models/db');
 const { generateOrderId, generateDeliveryOtp, generatePermanentRiderId } = require('../utils/idGenerator');
 const { calculateOrderFinancials } = require('../utils/pricingEngine');
@@ -102,11 +103,72 @@ function calculateHaversineDistanceKm(lat1, lon1, lat2, lon2) {
   return Math.max(0.5, Math.round(dist * 10) / 10);
 }
 
+/**
+ * Generates a deterministic SHA-256 fingerprint for an order request.
+ * Normalizes property order, cleans string values, validates prices against
+ * the restaurant menu, and sorts items by dish ID to ensure canonical hashing.
+ */
+function computeOrderPayloadFingerprint({
+  customerId,
+  customerPhone,
+  restaurantId,
+  items = [],
+  restaurant = null,
+  promoCode = '',
+  deliveryAddress = '',
+  paymentMethod = 'ONLINE'
+}) {
+  const cleanPhone = String(customerPhone || '').replace(/\D/g, '').slice(-10);
+  const cleanCustomerId = String(customerId || ('cust_' + cleanPhone)).trim().toLowerCase();
+  const cleanRestaurantId = String(restaurantId || '').trim();
+  const cleanDeliveryAddress = String(deliveryAddress || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const cleanPaymentMethod = String(paymentMethod || 'ONLINE').trim().toUpperCase();
+  const cleanPromoCode = promoCode ? String(promoCode).trim().toUpperCase() : '';
+
+  // Canonicalize items: validate prices against restaurant menu and sort by dish ID
+  const normalizedItems = (Array.isArray(items) ? items : []).map(item => {
+    const dishId = String(item.id || '').trim();
+    const qty = Math.max(1, parseInt(item.quantity || item.qty || 1, 10));
+
+    // Server-validated item price
+    let validatedPrice = parseFloat(item.price || 0);
+    if (restaurant && Array.isArray(restaurant.menu)) {
+      const menuItem = restaurant.menu.find(m => String(m.id) === dishId);
+      if (menuItem && typeof menuItem.price === 'number') {
+        validatedPrice = menuItem.price;
+      }
+    }
+
+    return {
+      id: dishId,
+      price: Math.round(validatedPrice * 100) / 100,
+      quantity: qty
+    };
+  });
+
+  // Sort deterministically by dish ID
+  normalizedItems.sort((a, b) => a.id.localeCompare(b.id));
+
+  // Canonical object with alphabetically sorted keys
+  const canonicalObj = {
+    customerId: cleanCustomerId,
+    customerPhone: cleanPhone,
+    deliveryAddress: cleanDeliveryAddress,
+    items: normalizedItems,
+    paymentMethod: cleanPaymentMethod,
+    promoCode: cleanPromoCode,
+    restaurantId: cleanRestaurantId
+  };
+
+  return crypto.createHash('sha256').update(JSON.stringify(canonicalObj)).digest('hex');
+}
+
 // In-memory active idempotency locks to serialize concurrent creation attempts
 const activeIdempotencyLocks = new Map();
 
 /**
- * Customer creates an order with server-side Idempotency and Concurrent Duplicate Protection
+ * Customer creates an order with server-side Idempotency, SHA-256 Payload Fingerprinting,
+ * and Concurrent Duplicate Protection
  */
 async function createOrder(req, res) {
   const idempotencyKey = (req.body && req.body.idempotencyKey)
@@ -142,11 +204,56 @@ async function createOrder(req, res) {
       return res.status(400).json({ success: false, message: 'Customer ka 10-digit mobile number bharna anivarya hai' });
     }
 
-    // --- SERVER-SIDE IDEMPOTENCY CHECK ---
+    const db = readDb();
+    const restaurant = db.restaurants.find(r => r.id === restaurantId);
+    if (!restaurant) {
+      return res.status(404).json({ success: false, message: 'Restaurant not found' });
+    }
+
+    // Generate deterministic SHA-256 payload fingerprint
+    const payloadFingerprint = computeOrderPayloadFingerprint({
+      customerId,
+      customerPhone,
+      restaurantId,
+      items,
+      restaurant,
+      promoCode,
+      deliveryAddress,
+      paymentMethod
+    });
+
+    // --- SERVER-SIDE IDEMPOTENCY & FINGERPRINT VALIDATION ---
     if (idempotencyKey) {
-      const dbCheck = readDb();
-      const existingOrder = (dbCheck.orders || []).find(o => o.idempotencyKey === idempotencyKey);
+      // 1. Check existing order in DB
+      const existingOrder = (db.orders || []).find(o => o.idempotencyKey === idempotencyKey);
       if (existingOrder) {
+        // Compute or verify fingerprint of stored order
+        const existingFingerprint = existingOrder.payloadFingerprint || computeOrderPayloadFingerprint({
+          customerId: existingOrder.customerId,
+          customerPhone: existingOrder.customerPhone,
+          restaurantId: existingOrder.restaurantId,
+          items: existingOrder.items,
+          restaurant: (db.restaurants || []).find(r => r.id === existingOrder.restaurantId) || restaurant,
+          promoCode: existingOrder.promoCode,
+          deliveryAddress: existingOrder.deliveryAddress,
+          paymentMethod: existingOrder.paymentMethod
+        });
+
+        // Backward compatibility: backfill fingerprint on stored order if missing
+        if (!existingOrder.payloadFingerprint) {
+          existingOrder.payloadFingerprint = existingFingerprint;
+          writeDb(db);
+        }
+
+        // Compare fingerprints: reject with 409 Conflict if payload changed
+        if (existingFingerprint !== payloadFingerprint) {
+          return res.status(409).json({
+            success: false,
+            message: 'Idempotency conflict: An order already exists for this idempotency key with a different payload.'
+          });
+        }
+
+        // Exact match: safe idempotent replay
         return res.json({
           success: true,
           isIdempotentReplay: true,
@@ -161,10 +268,20 @@ async function createOrder(req, res) {
         });
       }
 
-      // Check if a concurrent request with the SAME idempotency key is currently processing
+      // 2. Check if a concurrent request with the SAME idempotency key is currently processing
       if (activeIdempotencyLocks.has(idempotencyKey)) {
+        const inFlight = activeIdempotencyLocks.get(idempotencyKey);
+
+        // Immediate Conflict Rejection if concurrent request has a different payload
+        if (inFlight.fingerprint && inFlight.fingerprint !== payloadFingerprint) {
+          return res.status(409).json({
+            success: false,
+            message: 'Idempotency conflict: A concurrent request with this idempotency key is executing with a different payload.'
+          });
+        }
+
         try {
-          const inFlightOrder = await activeIdempotencyLocks.get(idempotencyKey);
+          const inFlightOrder = await inFlight.promise;
           return res.json({
             success: true,
             isIdempotentReplay: true,
@@ -185,19 +302,15 @@ async function createOrder(req, res) {
         }
       }
 
-      // Synchronously acquire in-flight concurrency lock
+      // 3. Synchronously acquire in-flight concurrency lock with fingerprint
       const lockPromise = new Promise((resolve, reject) => {
         lockResolver = resolve;
         lockRejecter = reject;
       });
-      activeIdempotencyLocks.set(idempotencyKey, lockPromise);
-    }
-
-    const db = readDb();
-    const restaurant = db.restaurants.find(r => r.id === restaurantId);
-    if (!restaurant) {
-      if (idempotencyKey) activeIdempotencyLocks.delete(idempotencyKey);
-      return res.status(404).json({ success: false, message: 'Restaurant not found' });
+      activeIdempotencyLocks.set(idempotencyKey, {
+        promise: lockPromise,
+        fingerprint: payloadFingerprint
+      });
     }
 
     // Dynamic distance calculation based on REAL GPS
@@ -284,6 +397,7 @@ async function createOrder(req, res) {
     const newOrder = {
       orderId,
       idempotencyKey: idempotencyKey || null,
+      payloadFingerprint: payloadFingerprint || null,
       customerId: customerId || 'cust_demo',
       customerName,
       customerPhone,
@@ -1276,6 +1390,7 @@ function cancelUnpaidOrder(req, res) {
 
 module.exports = {
   createOrder,
+  computeOrderPayloadFingerprint,
   getOrderDetails,
   listOrders,
   updateOrderStatus,
