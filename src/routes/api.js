@@ -25,6 +25,8 @@ router.get('/auth/profile/:userId', authController.getUserProfile);
 router.post('/kyc/submit', kycController.submitKyc);
 router.post('/rider/login', kycController.riderLogin);
 router.get('/kyc/status', kycController.getRiderStatus);
+router.get('/rider/dashboard-stats', kycController.getRiderDashboardStats);
+router.post('/rider/toggle-status', kycController.toggleRiderOnlineStatus);
 router.post('/kyc/approve', adminController.requireAdmin, kycController.approveKyc); // Admin gated
 router.post('/kyc/reject', adminController.requireAdmin, kycController.rejectKyc);   // Admin gated
 router.get('/kyc/pending', adminController.requireAdmin, kycController.getPendingKycList); // Admin gated

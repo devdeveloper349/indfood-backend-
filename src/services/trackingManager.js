@@ -297,15 +297,22 @@ function authorizeAndJoinOrder(socket, data, io) {
   orderId = String(orderId).trim();
 
   const db = readDb();
-  const order = (db.orders || []).find(o => o.orderId === orderId);
+  const order = (db.orders || []).find(o =>
+    o.orderId === orderId ||
+    o.displayOrderId === orderId ||
+    o.indOrderId === orderId ||
+    (orderId.startsWith('IND') && (o.displayOrderId === orderId.replace(/^IND/, '') || o.indOrderId === orderId))
+  );
   if (!order) {
     socket.emit('tracking_error', { message: `Order #${orderId} not found` });
     return;
   }
+  const canonicalOrderId = order.orderId;
 
   // Authorization check
   if (role === 'admin') {
-    socket.join(`order_${orderId}`);
+    socket.join(`order_${canonicalOrderId}`);
+    if (orderId !== canonicalOrderId) socket.join(`order_${orderId}`);
     socket.join('admin_room');
   } else if (userId) {
     const cleanUser = String(userId).trim();
@@ -319,7 +326,8 @@ function authorizeAndJoinOrder(socket, data, io) {
     const isRestaurant = (order.restaurantId && String(order.restaurantId).trim() === cleanUser);
 
     if (isCustomer || isRider || isRestaurant) {
-      socket.join(`order_${orderId}`);
+      socket.join(`order_${canonicalOrderId}`);
+      if (orderId !== canonicalOrderId) socket.join(`order_${orderId}`);
     } else {
       // Reject unauthorized socket
       socket.emit('tracking_error', { message: 'Unauthorized: Not permitted to track this order' });
@@ -327,7 +335,8 @@ function authorizeAndJoinOrder(socket, data, io) {
     }
   } else {
     // Backwards compatibility for older clients joining by orderId
-    socket.join(`order_${orderId}`);
+    socket.join(`order_${canonicalOrderId}`);
+    if (orderId !== canonicalOrderId) socket.join(`order_${orderId}`);
   }
 
   // Immediately push fresh in-memory location if available

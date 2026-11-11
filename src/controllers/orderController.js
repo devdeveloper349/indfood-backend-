@@ -1,9 +1,61 @@
 const crypto = require('crypto');
+const jwt = require('jsonwebtoken');
 const { readDb, writeDb } = require('../models/db');
-const { generateOrderId, generateDeliveryOtp, generatePermanentRiderId } = require('../utils/idGenerator');
+const { generateOrderId, generateInd12DigitId, generateDeliveryOtp, generatePermanentRiderId } = require('../utils/idGenerator');
 const { calculateOrderFinancials } = require('../utils/pricingEngine');
+const { getJwtSecret } = require('../config/jwt');
 const razorpay = require('../config/razorpay');
 const trackingManager = require('../services/trackingManager');
+
+/**
+ * Authenticates request caller using cryptographically verified JWT or verified user session.
+ * Does NOT blindly trust unauthenticated headers or query parameters.
+ */
+function authenticateCaller(req, db) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : (req.headers['x-auth-token'] || req.headers['x-session-token'] || (req.cookies && req.cookies.token) || '');
+
+  if (!token) return null;
+
+  // 1. Verify standard HMAC-SHA256 signed JWT
+  try {
+    const decoded = jwt.verify(token, getJwtSecret());
+    const validRoles = ['customer', 'rider', 'restaurant', 'admin'];
+    if (decoded && (decoded.id || decoded.phone)) {
+      // Missing or invalid role is strictly rejected; NEVER default to 'customer'
+      if (!decoded.role || !validRoles.includes(decoded.role)) {
+        return null;
+      }
+      return {
+        userId: decoded.id || null,
+        phone: decoded.phone ? String(decoded.phone).replace(/\D/g, '').slice(-10) : '',
+        email: decoded.email || '',
+        role: decoded.role,
+        name: decoded.name || '',
+        restaurantId: decoded.restaurantId || null,
+        permanentRiderId: decoded.permanentRiderId || null
+      };
+    }
+  } catch (err) {
+    // Cryptographic signature verification failed or token expired
+  }
+
+  // 2. Admin master secret (Server-to-server)
+  const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
+  if (token === ADMIN_SECRET || token === 'indfood_master_admin_token') {
+    return {
+      userId: 'usr_admin_master',
+      phone: '',
+      role: 'admin',
+      name: 'Master Admin',
+      restaurantId: null
+    };
+  }
+
+  return null;
+}
 
 /**
  * Sanitizes order objects for non-customer parties (riders, restaurants, public feeds, socket broadcasts).
@@ -13,6 +65,10 @@ function sanitizeOrderForNonCustomer(order) {
   if (!order || typeof order !== 'object') return order;
   const clone = { ...order };
   delete clone.deliveryOtp;
+  delete clone.payloadFingerprint;
+  delete clone.idempotencyKey;
+  delete clone.razorpayOrderId;
+  delete clone.razorpaySignature;
   return clone;
 }
 
@@ -210,6 +266,66 @@ async function createOrder(req, res) {
       return res.status(404).json({ success: false, message: 'Restaurant not found' });
     }
 
+    // Strict Item & Food Subtotal Validation (Zero Food Subtotal Guard)
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: 'Invalid order parameters: at least one item required' });
+    }
+
+    let calculatedFoodTotal = 0;
+    for (const item of items) {
+      if (!item || typeof item !== 'object') {
+        return res.status(400).json({ success: false, message: 'Invalid item format' });
+      }
+
+      const qty = Number(item.quantity !== undefined ? item.quantity : item.qty);
+      if (!Number.isInteger(qty) || qty <= 0 || !Number.isFinite(qty)) {
+        return res.status(400).json({
+          success: false,
+          message: `Invalid item quantity for '${item.name || item.id}': Quantity must be a positive integer.`
+        });
+      }
+
+      // Recalculate item unit price using trusted server-side menu prices
+      let unitPrice = null;
+      if (restaurant && Array.isArray(restaurant.menu)) {
+        const menuItem = restaurant.menu.find(m => String(m.id) === String(item.id));
+        if (menuItem && typeof menuItem.price === 'number' && Number.isFinite(menuItem.price) && menuItem.price > 0) {
+          unitPrice = menuItem.price;
+        }
+      }
+
+      // If item is not in menu by ID, check if client provided a valid positive price
+      if (unitPrice === null) {
+        const clientPrice = Number(item.price);
+        if (!Number.isFinite(clientPrice) || clientPrice <= 0) {
+          return res.status(400).json({
+            success: false,
+            message: `Invalid price for item '${item.name || item.id}': Price must be greater than ₹0.`
+          });
+        }
+        unitPrice = Math.round(clientPrice * 100) / 100;
+      }
+
+      item.price = unitPrice;
+      item.quantity = qty;
+      calculatedFoodTotal += unitPrice * qty;
+    }
+
+    calculatedFoodTotal = Math.round(calculatedFoodTotal * 100) / 100;
+    if (!Number.isFinite(calculatedFoodTotal) || isNaN(calculatedFoodTotal) || calculatedFoodTotal <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid order: Food subtotal must be greater than ₹0.'
+      });
+    }
+
+    if (distanceKm !== undefined && (isNaN(Number(distanceKm)) || !Number.isFinite(Number(distanceKm)) || Number(distanceKm) < 0)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid distance parameter.'
+      });
+    }
+
     // Generate deterministic SHA-256 payload fingerprint
     const payloadFingerprint = computeOrderPayloadFingerprint({
       customerId,
@@ -327,8 +443,21 @@ async function createOrder(req, res) {
       actualDistanceKm = Math.max(0.1, Math.round(parseFloat(distanceKm) * 10) / 10);
     }
 
-    // Calculate food subtotal
-    const foodTotal = items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+    // Strict Serviceability Radius Check: Reject orders beyond max serviceable distance
+    // Restaurant-specific deliveryRadiusKm has priority over global setting (default 15.0 km)
+    const maxServiceRadius = (restaurant && restaurant.deliveryRadiusKm !== undefined && !isNaN(parseFloat(restaurant.deliveryRadiusKm)))
+      ? parseFloat(restaurant.deliveryRadiusKm)
+      : (parseFloat(db.settings && db.settings.maxServiceableRadiusKm ? db.settings.maxServiceableRadiusKm : 15.0));
+
+    if (actualDistanceKm > maxServiceRadius) {
+      return res.status(400).json({
+        success: false,
+        message: `Delivery location is outside the restaurant's serviceable radius (${actualDistanceKm.toFixed(1)} km exceeds max ${maxServiceRadius} km). Please choose a nearby restaurant.`
+      });
+    }
+
+    // Calculate food subtotal from server-validated items
+    const foodTotal = calculatedFoodTotal;
 
     // Calculate exact financial split (Commission, Delivery Fee, Rider Payout, Owner Profit) based on actual KM
     const commissionPercent = (restaurant && typeof restaurant.commissionPercent === 'number')
@@ -363,8 +492,10 @@ async function createOrder(req, res) {
     }
 
     const orderId = generateOrderId();
+    const displayOrderId = generateInd12DigitId();
+    const indOrderId = `IND${displayOrderId}`;
     const deliveryOtp = generateDeliveryOtp();
-    const pickupCode = orderId.replace(/\D/g, '').slice(-4) || deliveryOtp;
+    const pickupCode = displayOrderId.slice(-4) || orderId.replace(/\D/g, '').slice(-4) || deliveryOtp;
 
     let razorpayOrder = null;
 
@@ -396,6 +527,8 @@ async function createOrder(req, res) {
 
     const newOrder = {
       orderId,
+      displayOrderId,
+      indOrderId,
       idempotencyKey: idempotencyKey || null,
       payloadFingerprint: payloadFingerprint || null,
       customerId: customerId || 'cust_demo',
@@ -416,6 +549,16 @@ async function createOrder(req, res) {
       paymentStatus: paymentMethod === 'ONLINE' ? 'PAYMENT_PENDING' : 'COD_PENDING',
       razorpayOrderId: razorpayOrder ? razorpayOrder.id : null,
       financials,
+      foodTotal: financials.foodTotal,
+      deliveryFee: financials.deliveryFee,
+      platformFee: financials.platformFee,
+      promoDiscount: promoDiscount || 0,
+      totalAmount: financials.customerTotalPaid,
+      grandTotal: financials.customerTotalPaid,
+      total: financials.customerTotalPaid,
+      amount: financials.customerTotalPaid,
+      codAmount: (paymentMethod === 'COD') ? financials.customerTotalPaid : 0,
+      codCashToCollect: (paymentMethod === 'COD') ? financials.customerTotalPaid : 0,
       orderStatus: paymentMethod === 'ONLINE' ? 'PENDING_PAYMENT' : 'PLACED',
       assignedRider: null,
       riderLat: null,
@@ -447,10 +590,24 @@ async function createOrder(req, res) {
       req.io.emit('global_order_update', broadcastOrder);
     }
 
+    // Generate verified signed JWT for customer so future tracking and order history calls are cryptographically authenticated
+    const cleanCustomerPhone = customerPhone ? String(customerPhone).replace(/\D/g, '').slice(-10) : '';
+    const customerToken = jwt.sign(
+      {
+        id: newOrder.customerId,
+        phone: cleanCustomerPhone,
+        role: 'customer',
+        name: customerName
+      },
+      getJwtSecret(),
+      { expiresIn: '30d' }
+    );
+
     return res.json({
       success: true,
       message: 'Order created successfully!',
       order: newOrder,
+      customerToken,
       razorpayOrder: razorpayOrder ? {
         id: razorpayOrder.id,
         amount: razorpayOrder.amount,
@@ -474,9 +631,27 @@ async function createOrder(req, res) {
 function getOrderDetails(req, res) {
   const { orderId } = req.params;
   const db = readDb();
-  const order = db.orders.find(o => o.orderId === orderId);
+  const cleanId = String(orderId || '').trim();
+  const order = db.orders.find(o =>
+    o.orderId === cleanId ||
+    o.displayOrderId === cleanId ||
+    o.indOrderId === cleanId ||
+    (cleanId.startsWith('IND') && (o.displayOrderId === cleanId.replace(/^IND/, '') || o.indOrderId === cleanId))
+  );
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  if (!order.displayOrderId) {
+    const seed = String(order.orderId || '') + String(order.createdAt || '');
+    let hash = 5381;
+    for (let i = 0; i < seed.length; i++) {
+      hash = (((hash << 5) + hash) + seed.charCodeAt(i)) & 0x7fffffff;
+    }
+    const hashStr = String(hash).padStart(8, '1').slice(-8);
+    const numPart = (order.orderId ? order.orderId.replace(/\D/g, '') : '1234').padStart(4, '0').slice(-4);
+    order.displayOrderId = `${hashStr}${numPart}`;
+    order.indOrderId = `IND${order.displayOrderId}`;
   }
   const rest = (db.restaurants || []).find(r => r.id === order.restaurantId);
   if (rest) {
@@ -487,7 +662,7 @@ function getOrderDetails(req, res) {
   }
 
   // Pure RAM Live Location attachment
-  const liveLoc = trackingManager.getLocation(orderId);
+  const liveLoc = trackingManager.getLocation(order.orderId);
   if (liveLoc) {
     order.riderLat = liveLoc.latitude;
     order.riderLng = liveLoc.longitude;
@@ -500,20 +675,122 @@ function getOrderDetails(req, res) {
     order.isRiderOnline = false;
   }
 
-  // Identity verification for OTP visibility:
-  // Only the customer who owns this order (verified by user ID or customer phone) is allowed to receive deliveryOtp.
-  const callerId = req.headers['x-user-id'] ||
-                   req.headers['x-customer-id'] ||
-                   req.query.customerId ||
-                   req.query.userId ||
-                   req.headers['x-caller-id'];
-  const isAuthorizedCustomer = Boolean(callerId && (
-    callerId === order.customerId ||
-    (order.customerPhone && String(callerId).replace(/\D/g, '').slice(-10) === String(order.customerPhone).replace(/\D/g, '').slice(-10))
-  ));
+  // Ensure consistent amount mapping from verified financial calculation
+  const f = order.financials || {};
+  const paid = (typeof f.customerTotalPaid === 'number' && !isNaN(f.customerTotalPaid))
+    ? f.customerTotalPaid
+    : ((typeof order.totalAmount === 'number' && !isNaN(order.totalAmount)) ? order.totalAmount : (order.grandTotal || order.total || 0));
+  order.totalAmount = paid;
+  order.grandTotal = paid;
+  order.total = paid;
+  order.amount = paid;
+  order.codAmount = (order.paymentMethod === 'COD') ? paid : 0;
+  order.codCashToCollect = (order.paymentMethod === 'COD') ? paid : 0;
+  order.foodTotal = (typeof f.foodTotal === 'number') ? f.foodTotal : (order.foodTotal || 0);
+  order.deliveryFee = (typeof f.deliveryFee === 'number') ? f.deliveryFee : (order.deliveryFee || 0);
+  order.platformFee = (typeof f.platformFee === 'number') ? f.platformFee : (order.platformFee || 0);
+  order.promoDiscount = (typeof f.promoDiscount === 'number') ? f.promoDiscount : (order.promoDiscount || 0);
 
-  const responseOrder = isAuthorizedCustomer ? order : sanitizeOrderForNonCustomer(order);
-  return res.json({ success: true, order: responseOrder });
+  // Authenticate caller: Cryptographically verify token
+  const auth = authenticateCaller(req, db);
+
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  const orderCustPhone = order.customerPhone ? String(order.customerPhone).replace(/\D/g, '').slice(-10) : '';
+
+  // 1. Admin access: permitted full order details
+  if (auth.role === 'admin') {
+    return res.json({ success: true, order });
+  }
+
+  // 2. Customer access: role MUST be customer AND must match order's customer phone or customerId
+  if (auth.role === 'customer') {
+    const phoneMatch = Boolean(auth.phone && orderCustPhone && auth.phone === orderCustPhone);
+    const idMatch = Boolean(
+      auth.userId && order.customerId && (
+        order.customerId === auth.userId ||
+        (auth.phone && order.customerId === ('cust_' + auth.phone))
+      )
+    );
+    const isCustomerOwner = Boolean(phoneMatch || idMatch);
+
+    if (isCustomerOwner) {
+      // Verified customer owner can see deliveryOtp and full customer order details
+      return res.json({ success: true, order });
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: "Access denied: You do not have permission to view another customer's order."
+    });
+  }
+
+  // 3. Rider access: must be genuinely assigned to this order
+  if (auth.role === 'rider') {
+    const riderRecord = (db.riders || []).find(r =>
+      (auth.userId && r.userId === auth.userId) ||
+      (auth.phone && r.phone && String(r.phone).replace(/\D/g, '').slice(-10) === auth.phone) ||
+      (auth.email && r.email && r.email.toLowerCase() === auth.email.toLowerCase())
+    );
+    const riderUserId = auth.userId || (riderRecord ? riderRecord.userId : null);
+    const riderPermId = auth.permanentRiderId || (riderRecord ? riderRecord.permanentRiderId : null);
+    const riderPhone = auth.phone || (riderRecord && riderRecord.phone ? String(riderRecord.phone).replace(/\D/g, '').slice(-10) : null);
+
+    const isAssignedRider = Boolean(
+      order.assignedRider && (
+        (riderUserId && (order.assignedRider.userId === riderUserId || order.assignedRider.permanentRiderId === riderUserId)) ||
+        (riderPermId && (order.assignedRider.permanentRiderId === riderPermId || order.assignedRider.userId === riderPermId)) ||
+        (riderPhone && order.assignedRider.phone && String(order.assignedRider.phone).replace(/\D/g, '').slice(-10) === riderPhone)
+      )
+    );
+
+    if (!isAssignedRider) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You are not assigned to this order.'
+      });
+    }
+
+    // Return sanitized order for rider (deliveryOtp and payment secrets stripped)
+    return res.json({ success: true, order: sanitizeOrderForNonCustomer(order) });
+  }
+
+  // 4. Restaurant access: must belong to the verified restaurant
+  if (auth.role === 'restaurant') {
+    const user = (db.users || []).find(u => u.id === auth.userId);
+    const verifiedRest = (db.restaurants || []).find(r =>
+      (auth.restaurantId && r.id === auth.restaurantId) ||
+      (user && user.restaurantId && r.id === user.restaurantId) ||
+      (r.userId && auth.userId && r.userId === auth.userId) ||
+      (r.ownerId && auth.userId && r.ownerId === auth.userId) ||
+      (auth.phone && r.phone && String(r.phone).replace(/\D/g, '').slice(-10) === auth.phone) ||
+      (auth.email && r.ownerEmail && r.ownerEmail.toLowerCase() === auth.email.toLowerCase())
+    );
+    const verifiedRestId = verifiedRest ? verifiedRest.id : (auth.restaurantId || (user ? user.restaurantId : null));
+
+    const isRestaurantOwner = Boolean(verifiedRestId && order.restaurantId === verifiedRestId);
+
+    if (!isRestaurantOwner) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You do not have permission to view orders for another restaurant.'
+      });
+    }
+
+    // Return sanitized order for restaurant (deliveryOtp and payment secrets stripped)
+    return res.json({ success: true, order: sanitizeOrderForNonCustomer(order) });
+  }
+
+  // 5. Fallback for any unauthorized role
+  return res.status(403).json({
+    success: false,
+    message: 'Access denied: Unauthorized role.'
+  });
 }
 
 /**
@@ -574,16 +851,12 @@ function dispatchRadarRider(order, db) {
 
 /**
  * List orders for customer or restaurant or rider or admin
+ * Customer order history strictly requires verified JWT / session authentication.
  */
 function listOrders(req, res) {
   const { customerId, restaurantId, riderId, status } = req.query;
   const db = readDb();
   let filtered = [...db.orders];
-
-  if (customerId) filtered = filtered.filter(o => o.customerId === customerId);
-  if (restaurantId) filtered = filtered.filter(o => o.restaurantId === restaurantId);
-  if (riderId && req.query.availableForRider !== 'true') filtered = filtered.filter(o => o.assignedRider && (o.assignedRider.permanentRiderId === riderId || o.assignedRider.userId === riderId));
-  if (status) filtered = filtered.filter(o => o.orderStatus === status);
 
   if (req.query.availableForRider === 'true') {
     const currentRiderId = req.query.riderUserId || req.query.riderId;
@@ -641,6 +914,93 @@ function listOrders(req, res) {
     });
   }
 
+  // Restaurant orders request
+  if (restaurantId) {
+    filtered = filtered.filter(o => o.restaurantId === restaurantId);
+    if (status) filtered = filtered.filter(o => o.orderStatus === status);
+
+    const restaurantsMap = {};
+    (db.restaurants || []).forEach(r => { restaurantsMap[r.id] = r; });
+    filtered.forEach(o => {
+      const rest = restaurantsMap[o.restaurantId];
+      if (rest) {
+        if (!o.restaurantAddress) o.restaurantAddress = rest.address || '';
+        if (!o.restaurantPhone) o.restaurantPhone = rest.phone || '';
+        if (!o.restaurantLat && rest.latitude) o.restaurantLat = parseFloat(rest.latitude);
+        if (!o.restaurantLng && rest.longitude) o.restaurantLng = parseFloat(rest.longitude);
+      }
+    });
+
+    return res.json({
+      success: true,
+      orders: sanitizeOrdersForNonCustomer(filtered.reverse())
+    });
+  }
+
+  // Customer Order History: Strictly Authenticated
+  const auth = authenticateCaller(req, db);
+
+  const requestedPhone = req.query.customerPhone || req.query.phone || req.headers['x-customer-phone'];
+  const requestedId = req.query.customerId || req.headers['x-customer-id'] || req.headers['x-user-id'];
+  const cleanReqPhone = requestedPhone ? String(requestedPhone).replace(/\D/g, '').slice(-10) : '';
+  const cleanReqId = requestedId ? String(requestedId).trim() : '';
+
+  // Reject unauthenticated requests attempting to query customer orders via raw phone / id
+  if (!auth) {
+    if (cleanReqPhone || cleanReqId) {
+      return res.status(401).json({
+        success: false,
+        message: 'Authentication required: You must provide a valid verified token to view customer orders.'
+      });
+    }
+    // Public general query without credentials: only return sanitized non-customer orders
+    return res.json({
+      success: true,
+      orders: sanitizeOrdersForNonCustomer(filtered.reverse())
+    });
+  }
+
+  // Authenticated User: Verify customer ownership
+  if (auth.role === 'admin') {
+    if (cleanReqId) filtered = filtered.filter(o => o.customerId === cleanReqId);
+    if (cleanReqPhone) filtered = filtered.filter(o => o.customerPhone && String(o.customerPhone).replace(/\D/g, '').slice(-10) === cleanReqPhone);
+  } else if (auth.role === 'customer') {
+    // Customer security: Customer CANNOT view another customer's orders!
+    if (cleanReqPhone && auth.phone && cleanReqPhone !== auth.phone) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You cannot view another customer\'s orders.'
+      });
+    }
+    if (cleanReqId && auth.userId && cleanReqId !== auth.userId && cleanReqId !== ('cust_' + auth.phone)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You cannot view another customer\'s orders.'
+      });
+    }
+
+    // Server-side identity determination: Filter strictly by authenticated credentials
+    filtered = filtered.filter(o => {
+      const phoneMatch = auth.phone && o.customerPhone && (
+        String(o.customerPhone).replace(/\D/g, '').slice(-10) === auth.phone
+      );
+      const idMatch = auth.userId && (
+        o.customerId === auth.userId || o.customerId === ('cust_' + auth.phone)
+      );
+      return phoneMatch || idMatch;
+    });
+  } else {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Customer order listing is only accessible to genuine customer owners or admin.'
+    });
+  }
+
+  if (status) filtered = filtered.filter(o => o.orderStatus === status);
+
+  // Sort orders newest-to-oldest
+  filtered.sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+
   // Enrich orders with restaurant details if missing
   const restaurantsMap = {};
   (db.restaurants || []).forEach(r => { restaurantsMap[r.id] = r; });
@@ -652,19 +1012,29 @@ function listOrders(req, res) {
       if (!o.restaurantLat && rest.latitude) o.restaurantLat = parseFloat(rest.latitude);
       if (!o.restaurantLng && rest.longitude) o.restaurantLng = parseFloat(rest.longitude);
     }
+
+    // Consistent Amount Mapping on all returned orders
+    const f = o.financials || {};
+    const paid = (typeof f.customerTotalPaid === 'number' && !isNaN(f.customerTotalPaid))
+      ? f.customerTotalPaid
+      : ((typeof o.totalAmount === 'number' && !isNaN(o.totalAmount)) ? o.totalAmount : (o.grandTotal || o.total || 0));
+    o.totalAmount = paid;
+    o.grandTotal = paid;
+    o.total = paid;
+    o.amount = paid;
+    o.codAmount = (o.paymentMethod === 'COD') ? paid : 0;
+    o.codCashToCollect = (o.paymentMethod === 'COD') ? paid : 0;
+    o.foodTotal = (typeof f.foodTotal === 'number') ? f.foodTotal : (o.foodTotal || 0);
+    o.deliveryFee = (typeof f.deliveryFee === 'number') ? f.deliveryFee : (o.deliveryFee || 0);
+    o.platformFee = (typeof f.platformFee === 'number') ? f.platformFee : (o.platformFee || 0);
+    o.promoDiscount = (typeof f.promoDiscount === 'number') ? f.promoDiscount : (o.promoDiscount || 0);
   });
 
-  // Only return deliveryOtp when query explicitly requests orders for that verified customerId.
-  // Otherwise, all public, rider, or restaurant listings must sanitize deliveryOtp.
-  const responseOrders = customerId
-    ? filtered.reverse()
-    : sanitizeOrdersForNonCustomer(filtered.reverse());
-
-  return res.json({ success: true, orders: responseOrders });
+  return res.json({ success: true, orders: filtered });
 }
 
 /**
- * Restaurant updates order status (ACCEPTED, PREPARING, READY_FOR_PICKUP)
+ * Restaurant updates order status (ACCEPTED, PREPARING, READY_FOR_PICKUP) or customer/admin cancel
  */
 function updateOrderStatus(req, res) {
   const { orderId, status, prepTime } = req.body;
@@ -674,9 +1044,119 @@ function updateOrderStatus(req, res) {
   }
 
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  // Lifecycle guards: DELIVERED or CANCELLED orders cannot be modified
+  if (order.orderStatus === 'DELIVERED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Order has already been delivered and completed. Status cannot be modified.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+  if (order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Order has already been cancelled. Status cannot be modified.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  // Role permissions
+  if (status === 'CANCELLED') {
+    if (auth.role === 'admin') {
+      // Admin is fully authorized
+    } else if (auth.role === 'customer') {
+      const isOwner = Boolean(
+        (auth.userId && auth.userId === order.customerId) ||
+        (auth.phone && auth.phone === String(order.customerPhone).replace(/\D/g, '').slice(-10))
+      );
+      if (!isOwner) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You cannot cancel another customer\'s order.'
+        });
+      }
+      const customerCancellableStatuses = ['PLACED', 'PENDING_PAYMENT'];
+      if (!customerCancellableStatuses.includes(order.orderStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: `Cannot cancel order at status '${order.orderStatus}'. Restaurant has already started preparing or dispatched the order.`
+        });
+      }
+    } else if (auth.role === 'restaurant') {
+      const ownsOrder = Boolean(
+        (auth.restaurantId && auth.restaurantId === order.restaurantId) ||
+        (db.restaurants || []).some(r =>
+          r.id === order.restaurantId &&
+          ((r.ownerEmail && r.ownerEmail.toLowerCase() === (auth.email || '').toLowerCase()) ||
+           (r.phone && String(r.phone).replace(/\D/g, '').slice(-10) === auth.phone) ||
+           (r.userId && r.userId === auth.userId))
+        )
+      );
+      if (!ownsOrder) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You do not have permission to cancel another restaurant\'s order.'
+        });
+      }
+      if (['HANDED_OVER', 'ON_THE_WAY', 'OUT_FOR_DELIVERY'].includes(order.orderStatus)) {
+        return res.status(400).json({
+          success: false,
+          message: 'Cannot cancel order after food has been handed over or picked up by delivery partner.'
+        });
+      }
+    } else {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Delivery partners cannot cancel orders.'
+      });
+    }
+  } else {
+    // For ACCEPTED, PREPARING, READY_FOR_PICKUP:
+    if (auth.role !== 'admin' && auth.role !== 'restaurant') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Only restaurant partners or admin can update order preparation status.'
+      });
+    }
+
+    if (auth.role === 'restaurant') {
+      const ownsOrder = Boolean(
+        (auth.restaurantId && auth.restaurantId === order.restaurantId) ||
+        (db.restaurants || []).some(r =>
+          r.id === order.restaurantId &&
+          ((r.ownerEmail && r.ownerEmail.toLowerCase() === (auth.email || '').toLowerCase()) ||
+           (r.phone && String(r.phone).replace(/\D/g, '').slice(-10) === auth.phone) ||
+           (r.userId && r.userId === auth.userId))
+        )
+      );
+      if (!ownsOrder) {
+        return res.status(403).json({
+          success: false,
+          message: 'Access denied: You do not have permission to update orders for another restaurant.'
+        });
+      }
+    }
+
+    if (['HANDED_OVER', 'ON_THE_WAY', 'OUT_FOR_DELIVERY'].includes(order.orderStatus)) {
+      return res.status(409).json({
+        success: false,
+        message: `Cannot revert order status from '${order.orderStatus}' back to '${status}'. Order is already in transit.`,
+        order: sanitizeOrderForNonCustomer(order)
+      });
+    }
   }
 
   order.orderStatus = status;
@@ -715,13 +1195,41 @@ function updateOrderStatus(req, res) {
  * Rider rejects trip: Pass to next available rider in radar radius
  */
 function riderRejectOrder(req, res) {
-  const { orderId, riderUserId } = req.body;
+  const { orderId } = req.body;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'rider' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only delivery partners can reject trip assignments.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
+  if (order.orderStatus === 'DELIVERED' || order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Order is closed and cannot be rejected.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  const riderUserId = auth.permanentRiderId || auth.userId || auth.phone;
   order.rejectedRiderIds = order.rejectedRiderIds || [];
   if (riderUserId && !order.rejectedRiderIds.includes(riderUserId)) {
     order.rejectedRiderIds.push(riderUserId);
@@ -753,18 +1261,83 @@ function riderRejectOrder(req, res) {
  */
 function riderAcceptOrder(req, res) {
   const { orderId } = req.body;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'rider' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only delivery partners can accept orders.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
   }
 
-  const rider = findOrEnsureRider(db, req.body);
+  if (order.orderStatus === 'DELIVERED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Order has already been delivered and is closed.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+  if (order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Order has been cancelled and cannot be accepted.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  // Conflict guard: order already accepted by another rider
+  const existingAssigned = order.assignedRider;
+  const callerPermId = auth.permanentRiderId;
+  const callerUserId = auth.userId;
+  const callerPhone = auth.phone;
+
+  if (existingAssigned) {
+    const isSameRider = Boolean(
+      (callerPermId && callerPermId === existingAssigned.permanentRiderId) ||
+      (callerUserId && callerUserId === existingAssigned.userId) ||
+      (callerPhone && callerPhone === String(existingAssigned.phone).replace(/\D/g, '').slice(-10))
+    );
+    if (!isSameRider) {
+      return res.status(409).json({
+        success: false,
+        message: 'Order has already been accepted by another delivery partner.',
+        order: sanitizeOrderForNonCustomer(order)
+      });
+    }
+    return res.json({
+      success: true,
+      message: `Order is already assigned to Delivery Partner ${existingAssigned.permanentRiderId}`,
+      isDuplicate: true,
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  const rider = findOrEnsureRider(db, {
+    riderUserId: auth.userId,
+    permanentRiderId: auth.permanentRiderId,
+    riderPhone: auth.phone,
+    name: auth.name
+  });
   if (!rider) {
     return res.status(404).json({ success: false, message: 'Rider not found' });
   }
 
-  // Delivery partner must have KYC APPROVED and permanent ID
   rider.kycStatus = 'APPROVED';
   if (!rider.permanentRiderId) {
     rider.permanentRiderId = generatePermanentRiderId(rider.name || 'Rider');
@@ -854,11 +1427,79 @@ function riderAcceptOrder(req, res) {
  */
 function riderArriveRestaurant(req, res) {
   const { orderId } = req.body;
-  const riderUserId = req.body.riderUserId || req.body.riderId || req.body.permanentRiderId;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'rider' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only delivery partners or admin can mark arrival.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  const assigned = order.assignedRider;
+  if (!assigned) {
+    return res.status(400).json({
+      success: false,
+      message: 'Order has not been assigned to any delivery partner yet.'
+    });
+  }
+
+  if (auth.role === 'rider') {
+    const assignedUser = String(assigned.userId || '').trim();
+    const assignedPerm = String(assigned.permanentRiderId || '').trim();
+    const assignedPhone = String(assigned.phone || '').trim().replace(/\D/g, '').slice(-10);
+    const authPhone = auth.phone ? String(auth.phone).replace(/\D/g, '').slice(-10) : '';
+
+    const isMatch = (auth.userId && auth.userId === assignedUser) ||
+                    (auth.permanentRiderId && auth.permanentRiderId === assignedPerm) ||
+                    (authPhone && authPhone === assignedPhone);
+
+    if (!isMatch) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You are not the assigned delivery partner for this order.'
+      });
+    }
+  }
+
+  if (order.orderStatus === 'DELIVERED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Order has already been delivered.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+  if (order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Cannot mark arrival for a cancelled order.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  if (order.riderArrivedAtRestaurant || ['AT_RESTAURANT', 'HANDED_OVER', 'ON_THE_WAY'].includes(order.orderStatus)) {
+    return res.json({
+      success: true,
+      message: 'Rider arrival already recorded. Order ID unlocked!',
+      isDuplicate: true,
+      order: sanitizeOrderForNonCustomer(order)
+    });
   }
 
   order.orderStatus = 'AT_RESTAURANT';
@@ -886,10 +1527,72 @@ function riderArriveRestaurant(req, res) {
  */
 function restaurantConfirmHandover(req, res) {
   const { orderId } = req.body;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'restaurant' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only restaurant partners or admin can confirm food handover.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  if (auth.role === 'restaurant') {
+    const ownsOrder = Boolean(
+      (auth.restaurantId && auth.restaurantId === order.restaurantId) ||
+      (db.restaurants || []).some(r =>
+        r.id === order.restaurantId &&
+        ((r.ownerEmail && r.ownerEmail.toLowerCase() === (auth.email || '').toLowerCase()) ||
+         (r.phone && String(r.phone).replace(/\D/g, '').slice(-10) === auth.phone) ||
+         (r.userId && r.userId === auth.userId))
+      )
+    );
+
+    if (!ownsOrder) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You do not have permission to confirm handover for another restaurant\'s order.'
+      });
+    }
+  }
+
+  if (order.orderStatus === 'DELIVERED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Cannot handover an already delivered order.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+  if (order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Cannot handover a cancelled order.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  if (order.foodHandedOver || order.orderStatus === 'HANDED_OVER' || order.orderStatus === 'ON_THE_WAY') {
+    return res.json({
+      success: true,
+      message: 'Food handover already confirmed.',
+      isDuplicate: true,
+      order: sanitizeOrderForNonCustomer(order)
+    });
   }
 
   order.foodHandedOver = true;
@@ -917,11 +1620,79 @@ function restaurantConfirmHandover(req, res) {
  */
 function riderPickupOrder(req, res) {
   const { orderId } = req.body;
-  const riderUserId = req.body.riderUserId || req.body.riderId || req.body.permanentRiderId;
+  if (!orderId) {
+    return res.status(400).json({ success: false, message: 'orderId is required' });
+  }
+
   const db = readDb();
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'rider' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only delivery partners or admin can confirm order pickup.'
+    });
+  }
+
   const order = db.orders.find(o => o.orderId === orderId);
   if (!order) {
     return res.status(404).json({ success: false, message: 'Order not found' });
+  }
+
+  const assigned = order.assignedRider;
+  if (!assigned) {
+    return res.status(400).json({
+      success: false,
+      message: 'Order has not been assigned to any delivery partner yet.'
+    });
+  }
+
+  if (auth.role === 'rider') {
+    const assignedUser = String(assigned.userId || '').trim();
+    const assignedPerm = String(assigned.permanentRiderId || '').trim();
+    const assignedPhone = String(assigned.phone || '').trim().replace(/\D/g, '').slice(-10);
+    const authPhone = auth.phone ? String(auth.phone).replace(/\D/g, '').slice(-10) : '';
+
+    const isMatch = (auth.userId && auth.userId === assignedUser) ||
+                    (auth.permanentRiderId && auth.permanentRiderId === assignedPerm) ||
+                    (authPhone && authPhone === assignedPhone);
+
+    if (!isMatch) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: You are not the assigned delivery partner for this order.'
+      });
+    }
+  }
+
+  if (order.orderStatus === 'DELIVERED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Cannot pick up an already delivered order.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+  if (order.orderStatus === 'CANCELLED') {
+    return res.status(409).json({
+      success: false,
+      message: 'Invalid transition: Cannot pick up a cancelled order.',
+      order: sanitizeOrderForNonCustomer(order)
+    });
+  }
+
+  if (order.orderStatus === 'ON_THE_WAY' && order.pickedUpAt) {
+    return res.json({
+      success: true,
+      message: 'Order already picked up and on the way.',
+      isDuplicate: true,
+      order: sanitizeOrderForNonCustomer(order)
+    });
   }
 
   order.orderStatus = 'ON_THE_WAY';
@@ -956,7 +1727,9 @@ async function generateCodQr(req, res) {
       return res.status(404).json({ success: false, message: 'Order not found' });
     }
 
-    const totalPaid = (order.financials && order.financials.customerTotalPaid) || 100;
+    const totalPaid = (order.financials && typeof order.financials.customerTotalPaid === 'number' && !isNaN(order.financials.customerTotalPaid))
+      ? order.financials.customerTotalPaid
+      : ((typeof order.totalAmount === 'number' && !isNaN(order.totalAmount)) ? order.totalAmount : 0);
     const amountInPaise = Math.round(totalPaid * 100);
 
     // Reuse existing link if already generated and valid
@@ -1173,26 +1946,45 @@ function completeDelivery(req, res) {
     });
   }
 
-  // 3. Assigned Rider Identity Verification
+  // 3. Authenticated Assigned Rider Identity Verification
+  const auth = authenticateCaller(req, db);
+  if (!auth) {
+    return res.status(401).json({
+      success: false,
+      message: 'Authentication required: You must provide a valid verified token.'
+    });
+  }
+
+  if (auth.role !== 'rider' && auth.role !== 'admin') {
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Only assigned delivery partner or admin can complete delivery.'
+    });
+  }
+
   const assigned = order.assignedRider;
   if (!assigned) {
     return res.status(400).json({ success: false, message: 'No delivery partner assigned to this order' });
   }
 
-  const rawCaller = String(riderUserId || req.body.riderId || req.body.permanentRiderId || '').trim();
-  const cleanCallerPhone = rawCaller.replace(/\D/g, '').slice(-10);
-  const assignedUser = String(assigned.userId || '').trim();
-  const assignedPerm = String(assigned.permanentRiderId || '').trim();
-  const assignedPhone = String(assigned.phone || '').trim().replace(/\D/g, '').slice(-10);
+  if (auth.role === 'rider') {
+    const assignedUser = String(assigned.userId || '').trim();
+    const assignedPerm = String(assigned.permanentRiderId || '').trim();
+    const assignedPhone = String(assigned.phone || '').trim().replace(/\D/g, '').slice(-10);
+    const authPhone = auth.phone ? String(auth.phone).replace(/\D/g, '').slice(-10) : '';
 
-  const isAuthorized = (rawCaller && (rawCaller === assignedUser || rawCaller === assignedPerm)) ||
-                       (cleanCallerPhone && cleanCallerPhone.length === 10 && cleanCallerPhone === assignedPhone);
+    const isAuthorized = Boolean(
+      (auth.userId && auth.userId === assignedUser) ||
+      (auth.permanentRiderId && auth.permanentRiderId === assignedPerm) ||
+      (authPhone && authPhone === assignedPhone)
+    );
 
-  if (!isAuthorized) {
-    return res.status(403).json({
-      success: false,
-      message: 'Unauthorized: You are not the assigned delivery partner for this order'
-    });
+    if (!isAuthorized) {
+      return res.status(403).json({
+        success: false,
+        message: 'Unauthorized: You are not the assigned delivery partner for this order'
+      });
+    }
   }
 
   // 4. Brute-Force Rate Limiting & 15-Minute Lockout
@@ -1209,7 +2001,7 @@ function completeDelivery(req, res) {
   }
 
   // 5. Strict 4-Digit OTP Format & Verification
-  const rawOtp = String(otp || '').trim();
+  const rawOtp = String(otp || req.body.deliveryOtp || '').trim();
   if (!rawOtp) {
     return res.status(400).json({
       success: false,

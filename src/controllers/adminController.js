@@ -1,4 +1,6 @@
+const jwt = require('jsonwebtoken');
 const { readDb, writeDb } = require('../models/db');
+const { getJwtSecret } = require('../config/jwt');
 
 function getDashboardStats(req, res) {
   const db = readDb();
@@ -60,7 +62,9 @@ function updateSettings(req, res) {
     defaultRestaurantCommission,
     defaultPlatformFee,
     customerBaseDeliveryFee,
-    customerPerKmDeliveryFee
+    customerPerKmDeliveryFee,
+    maxCustomerDeliveryFee,
+    maxServiceableRadiusKm
   } = req.body;
 
   if (riderPerKmRate !== undefined && !isNaN(parseFloat(riderPerKmRate))) {
@@ -92,6 +96,12 @@ function updateSettings(req, res) {
   }
   if (customerPerKmDeliveryFee !== undefined && !isNaN(parseFloat(customerPerKmDeliveryFee))) {
     db.settings.customerPerKmDeliveryFee = Math.max(0, parseFloat(customerPerKmDeliveryFee));
+  }
+  if (maxCustomerDeliveryFee !== undefined && !isNaN(parseFloat(maxCustomerDeliveryFee))) {
+    db.settings.maxCustomerDeliveryFee = Math.max(0, parseFloat(maxCustomerDeliveryFee));
+  }
+  if (maxServiceableRadiusKm !== undefined && !isNaN(parseFloat(maxServiceableRadiusKm))) {
+    db.settings.maxServiceableRadiusKm = Math.max(0.1, parseFloat(maxServiceableRadiusKm));
   }
 
   writeDb(db);
@@ -198,23 +208,22 @@ function requireAdmin(req, res, next) {
 
   const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
 
-  // 1. Direct Master Admin Secret Key match
+  // 1. Direct Master Admin Secret Key match (Server-to-server)
   if (token && (token === ADMIN_SECRET || token === 'indfood_master_admin_token')) {
     return next();
   }
 
-  // 2. Token from user session (jwt_token_usr_admin_1 / jwt_token_google_usr_admin_1)
-  const callerUserId = req.headers['x-user-id'] ||
-                       (token && token.startsWith('jwt_token_') ? token.split('_')[2] : null);
-  const db = readDb();
-  if (callerUserId) {
-    const user = (db.users || []).find(u => u.id === callerUserId && u.role === 'admin');
-    if (user) return next();
-  }
-
+  // 2. Verified Admin HMAC-SHA256 Signed JWT
   if (token) {
-    const user = (db.users || []).find(u => (token.includes(u.id) || u.phone === token) && u.role === 'admin');
-    if (user) return next();
+    try {
+      const decoded = jwt.verify(token, getJwtSecret());
+      if (decoded && decoded.role === 'admin') {
+        req.adminUser = decoded;
+        return next();
+      }
+    } catch (e) {
+      // Signature verification failed or token expired
+    }
   }
 
   return res.status(401).json({
@@ -239,9 +248,19 @@ function resetDatabase(req, res) {
     : (req.headers['x-admin-token'] || req.headers['x-admin-key'] || '');
   const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
 
-  const db = readDb();
-  const callerUser = (db.users || []).find(u => token && (token === ADMIN_SECRET || token.includes(u.id)) && u.role === 'admin');
-  const isAuthorized = token === ADMIN_SECRET || callerUser;
+  let isAdminJwt = false;
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, getJwtSecret());
+      if (decoded && decoded.role === 'admin') {
+        isAdminJwt = true;
+      }
+    } catch (e) {
+      // Signature failed or expired
+    }
+  }
+
+  const isAuthorized = token === ADMIN_SECRET || isAdminJwt;
 
   if (!isAuthorized) {
     return res.status(403).json({

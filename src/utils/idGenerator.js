@@ -29,6 +29,17 @@ function generateOrderId() {
 }
 
 /**
+ * 12-digit numeric Unique INDFood Order ID
+ * Format: 12 numeric digits (e.g., 172611451234)
+ * Prefixed with 'IND' for display: IND172611451234
+ */
+function generateInd12DigitId() {
+  const tsPart = Date.now().toString().slice(-8);
+  const rndPart = crypto.randomInt(1000, 10000).toString();
+  return `${tsPart}${rndPart}`;
+}
+
+/**
  * 4-digit Cryptographically Secure Delivery OTP generator (1000-9999)
  */
 function generateDeliveryOtp() {
@@ -38,5 +49,6 @@ function generateDeliveryOtp() {
 module.exports = {
   generatePermanentRiderId,
   generateOrderId,
+  generateInd12DigitId,
   generateDeliveryOtp
 };

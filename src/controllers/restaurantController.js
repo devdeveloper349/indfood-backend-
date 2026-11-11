@@ -1,5 +1,7 @@
+const jwt = require('jsonwebtoken');
 const { readDb, writeDb } = require('../models/db');
 const { v4: uuidv4 } = require('uuid');
+const { getJwtSecret } = require('../config/jwt');
 
 /**
  * Strict Restaurant Ownership & Authorization Validator
@@ -32,77 +34,51 @@ function verifyRestaurantOwnership(req, targetRestaurantId, db) {
 
   const ADMIN_SECRET = process.env.ADMIN_SECRET_KEY || 'indfood_admin_secret_2026';
 
-  // 1. Master Admin authorization bypass
+  // 1. Master Admin authorization bypass (Server-to-server)
   if (token && (token === ADMIN_SECRET || token === 'indfood_master_admin_token')) {
     return { authorized: true, isAdmin: true, restaurant: rest };
   }
 
-  // 2. Identify Caller User from token or headers
-  let callerUserId = req.headers['x-user-id'] || req.body.userId || req.query.userId || null;
-  if (!callerUserId && token && token.startsWith('jwt_token_')) {
-    if (token.startsWith('jwt_token_google_')) {
-      callerUserId = token.replace('jwt_token_google_', '');
-    } else {
-      const parts = token.split('_');
-      if (parts[2] === 'usr') {
-        callerUserId = `usr_${parts[3]}`;
-      } else {
-        callerUserId = parts[2];
+  // 2. Strict Verified HMAC-SHA256 Signed JWT
+  if (token) {
+    try {
+      const decoded = jwt.verify(token, getJwtSecret());
+      if (decoded) {
+        if (decoded.role === 'admin') {
+          return { authorized: true, isAdmin: true, restaurant: rest, user: decoded };
+        }
+        if (decoded.role === 'restaurant') {
+          const isOwner = (decoded.restaurantId === targetRestaurantId) ||
+            (decoded.phone && rest.phone && String(rest.phone).replace(/\D/g, '').slice(-10) === String(decoded.phone).replace(/\D/g, '').slice(-10)) ||
+            (decoded.email && rest.ownerEmail && rest.ownerEmail.toLowerCase() === decoded.email.toLowerCase()) ||
+            (rest.ownerId && decoded.id && rest.ownerId === decoded.id) ||
+            (rest.userId && decoded.id && rest.userId === decoded.id);
+          if (isOwner) {
+            return { authorized: true, isAdmin: false, restaurant: rest, user: decoded };
+          }
+          return {
+            authorized: false,
+            status: 403,
+            message: 'Forbidden: You do not have permission to modify this restaurant. Cross-restaurant ownership violation.'
+          };
+        }
+        return {
+          authorized: false,
+          status: 403,
+          message: 'Forbidden: Restaurant or Admin role required.'
+        };
       }
-    }
-  } else if (!callerUserId && token && token.startsWith('dummy_jwt_token_')) {
-    callerUserId = token.replace('dummy_jwt_token_', '');
-  }
-
-  // Find user in db.users
-  const user = callerUserId
-    ? (db.users || []).find(u => u.id === callerUserId)
-    : (token ? (db.users || []).find(u => token.includes(u.id) || (u.phone && token.includes(u.phone))) : null);
-
-  if (user && user.role === 'admin') {
-    return { authorized: true, isAdmin: true, restaurant: rest };
-  }
-
-  // If no authenticated identity at all
-  if (!user && !token && !callerUserId) {
-    return {
-      authorized: false,
-      status: 401,
-      message: 'Unauthorized: Restaurant authentication token or credentials required.'
-    };
-  }
-
-  // 3. Verify Ownership: Does user own targetRestaurantId?
-  const cleanRestPhone = rest.phone ? rest.phone.replace(/\D/g, '').slice(-10) : '';
-  const cleanRestEmail = rest.ownerEmail ? rest.ownerEmail.trim().toLowerCase() : '';
-
-  let isOwner = false;
-  if (user) {
-    const cleanUserPhone = user.phone ? user.phone.replace(/\D/g, '').slice(-10) : '';
-    const cleanUserEmail = user.email ? user.email.trim().toLowerCase() : '';
-
-    if (user.restaurantId && user.restaurantId === rest.id) isOwner = true;
-    if (rest.ownerUserId && rest.ownerUserId === user.id) isOwner = true;
-    if (cleanRestPhone && cleanUserPhone && cleanRestPhone === cleanUserPhone) isOwner = true;
-    if (cleanRestEmail && cleanUserEmail && cleanRestEmail === cleanUserEmail) isOwner = true;
-  }
-
-  // Also check if caller directly passed token containing restaurant credentials
-  if (!isOwner && token) {
-    if (token === rest.id || (cleanRestPhone && token.includes(cleanRestPhone))) {
-      isOwner = true;
+    } catch (e) {
+      // Cryptographic signature verification failed or token expired
     }
   }
 
-  if (!isOwner) {
-    return {
-      authorized: false,
-      status: 403,
-      message: 'Forbidden: You do not have permission to modify this restaurant. Cross-restaurant ownership violation.'
-    };
-  }
-
-  return { authorized: true, user, restaurant: rest };
+  // Unsigned, dummy, forged, expired or missing token
+  return {
+    authorized: false,
+    status: 401,
+    message: 'Unauthorized: Valid signed restaurant authentication token required.'
+  };
 }
 
 /**

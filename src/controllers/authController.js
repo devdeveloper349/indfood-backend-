@@ -1,11 +1,75 @@
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const { readDb, writeDb } = require('../models/db');
 const { generatePermanentRiderId } = require('../utils/idGenerator');
+const { getJwtSecret } = require('../config/jwt');
 
-// In-memory OTP storage with 10-minute expiry
-const otpStore = new Map(); // key: email, value: { otp, expiresAt, purpose }
+function generateUserJwt(user) {
+  return jwt.sign(
+    {
+      id: user.id,
+      phone: user.phone ? String(user.phone).replace(/\D/g, '').slice(-10) : '',
+      email: user.email || '',
+      role: user.role || 'customer',
+      name: user.name || '',
+      restaurantId: user.restaurantId || null,
+      permanentRiderId: user.permanentRiderId || null
+    },
+    getJwtSecret(),
+    { expiresIn: '30d' }
+  );
+}
+
+// In-memory OTP storage with 10-minute expiry (key: phone/email, value: { otp, expiresAt, purpose })
+const otpStore = new Map();
+
+/**
+ * Sets a server-side OTP bound to an identifier (phone or email).
+ * Default expiry: 10 minutes (600,000 ms).
+ */
+function setServerOtp(identifier, otp, ttlMs = 10 * 60 * 1000, purpose = 'verification') {
+  if (!identifier || !otp) return;
+  const cleanId = String(identifier).includes('@')
+    ? String(identifier).toLowerCase().trim()
+    : String(identifier).replace(/\D/g, '').slice(-10);
+  otpStore.set(cleanId, {
+    otp: String(otp).trim(),
+    expiresAt: Date.now() + ttlMs,
+    purpose
+  });
+}
+
+/**
+ * Strictly verifies server-side OTP against otpStore.
+ * Enforces:
+ * 1. Matching identifier (phone or email).
+ * 2. Exact OTP match.
+ * 3. Not expired.
+ * 4. Single-use: atomically deleted upon verification to prevent replay attacks.
+ */
+function verifyServerOtp(identifier, otpInput) {
+  if (!identifier || !otpInput) return false;
+  const cleanId = String(identifier).includes('@')
+    ? String(identifier).toLowerCase().trim()
+    : String(identifier).replace(/\D/g, '').slice(-10);
+  const stored = otpStore.get(cleanId);
+  if (!stored) return false;
+
+  if (Date.now() > stored.expiresAt) {
+    otpStore.delete(cleanId);
+    return false;
+  }
+
+  if (stored.otp !== String(otpInput).trim()) {
+    return false;
+  }
+
+  // Atomically delete upon successful verification (single-use guarantee)
+  otpStore.delete(cleanId);
+  return true;
+}
 
 // Google Gmail SMTP Real Transporter
 const emailUser = process.env.EMAIL_USER || 'devrajparmar349@gmail.com';
@@ -299,7 +363,7 @@ function registerUser(req, res) {
       rider,
       permanentRiderId: rider ? rider.permanentRiderId : null,
       restaurant,
-      token: `jwt_token_${user.id}_${Date.now()}`
+      token: generateUserJwt(user)
     });
   } catch (err) {
     console.error('Register error:', err);
@@ -437,7 +501,7 @@ function loginEmail(req, res) {
       rider,
       restaurant,
       permanentRiderId: rider ? rider.permanentRiderId : null,
-      token: `jwt_token_${user.id}_${Date.now()}`
+      token: generateUserJwt(user)
     });
   } catch (err) {
     console.error('Login error:', err);
@@ -547,7 +611,7 @@ function googleLogin(req, res) {
       rider,
       restaurant,
       permanentRiderId: rider ? rider.permanentRiderId : null,
-      token: `jwt_token_google_${user.id}`
+      token: generateUserJwt(user)
     });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message || 'Google login failed' });
@@ -737,7 +801,7 @@ function loginOrRegister(req, res) {
     rider: riderInfo,
     permanentRiderId: riderInfo ? riderInfo.permanentRiderId : null,
     restaurant,
-    token: `dummy_jwt_token_${user.id}`
+    token: generateUserJwt(user)
   });
 }
 
@@ -761,11 +825,15 @@ function getUserProfile(req, res) {
 module.exports = {
   sendEmailOtp,
   verifyOtp,
+  setServerOtp,
+  verifyServerOtp,
+  otpStore,
   registerUser,
   loginEmail,
   googleLogin,
   forgotPassword,
   resetPassword,
   loginOrRegister,
-  getUserProfile
+  getUserProfile,
+  generateUserJwt
 };

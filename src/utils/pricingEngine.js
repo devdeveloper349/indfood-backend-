@@ -93,6 +93,14 @@ function calculateCustomerDeliveryFee(distanceKm) {
     fee += (dist - 2.0) * perKmFee;
   }
 
+  // Optional Admin-configured maximum customer delivery fee cap
+  if (settings.maxCustomerDeliveryFee !== undefined && !isNaN(parseFloat(settings.maxCustomerDeliveryFee))) {
+    const maxFee = parseFloat(settings.maxCustomerDeliveryFee);
+    if (maxFee > 0 && fee > maxFee) {
+      fee = maxFee;
+    }
+  }
+
   return Math.round(fee * 100) / 100;
 }
 

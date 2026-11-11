@@ -4,6 +4,24 @@ const cors = require('cors');
 const path = require('path');
 const { Server } = require('socket.io');
 require('dotenv').config({ path: path.join(__dirname, '../.env') });
+const { getJwtSecret } = require('./config/jwt');
+
+// Enforce safe startup environment validation without hardcoded secret fallbacks
+try {
+  getJwtSecret();
+} catch (configErr) {
+  console.error(`❌ [FATAL CONFIG ERROR] ${configErr.message}`);
+  process.exit(1);
+}
+
+if (process.env.NODE_ENV === 'production') {
+  const missingSecrets = [];
+  if (!process.env.JWT_SECRET) missingSecrets.push('JWT_SECRET');
+  if (missingSecrets.length > 0) {
+    console.error(`❌ [FATAL CONFIG ERROR] Missing required production secret(s): ${missingSecrets.join(', ')}`);
+    process.exit(1);
+  }
+}
 
 const apiRoutes = require('./routes/api');
 const trackingManager = require('./services/trackingManager');
@@ -88,7 +106,6 @@ app.get('/health', (req, res) => {
   res.json({
     status: 'ONLINE',
     service: 'INDFood Master Backend',
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID,
     timestamp: new Date().toISOString()
   });
 });
@@ -125,7 +142,7 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 INDFood Backend Server running on http://0.0.0.0:${PORT}`);
-  console.log(`💳 Razorpay Gateway Initialized with Key: ${process.env.RAZORPAY_KEY_ID}`);
+  console.log(`💳 Payment Gateway configured: ${process.env.RAZORPAY_KEY_ID ? 'Yes' : 'No'}`);
 
   // Self-Ping Keep-Alive: Prevents Render free instance from sleeping
   const https = require('https');
