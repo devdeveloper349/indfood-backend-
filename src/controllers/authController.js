@@ -5,6 +5,7 @@ const nodemailer = require('nodemailer');
 const { readDb, writeDb } = require('../models/db');
 const { generatePermanentRiderId } = require('../utils/idGenerator');
 const { getJwtSecret } = require('../config/jwt');
+const sessionManager = require('../services/sessionManager');
 
 function generateUserJwt(user) {
   return jwt.sign(
@@ -124,7 +125,7 @@ async function sendEmailOtp(req, res) {
     console.log(`To: ${cleanEmail}`);
     console.log(`Brand: IND food`);
     console.log(`Subject: Your IND food Verification Code`);
-    console.log(`Message: Your 6-digit verification code is: [ ${otp} ]`);
+    console.log(`Message: Your 6-digit verification code has been dispatched [ REDACTED ]`);
     console.log(`Expires in: 10 minutes`);
     console.log(`======================================================\n`);
 
@@ -173,7 +174,6 @@ async function sendEmailOtp(req, res) {
     return res.json({
       success: true,
       message: `IND food ki taraf se verification code ${cleanEmail} par bhej diya gaya hai!`,
-      otp, // included for seamless autofill & testing
       brand: 'IND food'
     });
   } catch (err) {
@@ -289,8 +289,8 @@ function registerUser(req, res) {
           email: cleanEmail,
           name: cleanName,
           permanentRiderId: permId,
-          kycStatus: 'APPROVED', // NO 18+ BLOCKING!
-          isOnline: true,
+          kycStatus: 'NOT_SUBMITTED',
+          isOnline: false,
           walletBalance: 0,
           completedTrips: 0,
           bikeNumber: 'BIKE-REG',
@@ -301,8 +301,9 @@ function registerUser(req, res) {
         rider.phone = cleanPhone;
         rider.email = cleanEmail;
         rider.name = cleanName;
-        rider.kycStatus = 'APPROVED';
-        rider.isOnline = true;
+        if (!rider.kycStatus) {
+          rider.kycStatus = 'NOT_SUBMITTED';
+        }
         if (!rider.permanentRiderId) {
           rider.permanentRiderId = generatePermanentRiderId(cleanName);
         }
@@ -447,8 +448,8 @@ function loginEmail(req, res) {
           email: user.email,
           name: user.name,
           permanentRiderId: permId,
-          kycStatus: 'APPROVED',
-          isOnline: true,
+          kycStatus: 'NOT_SUBMITTED',
+          isOnline: false,
           walletBalance: 0,
           completedTrips: 0,
           bikeNumber: 'BIKE-REG',
@@ -559,8 +560,8 @@ function googleLogin(req, res) {
           email: cleanEmail,
           name: cleanName,
           permanentRiderId: permId,
-          kycStatus: 'APPROVED',
-          isOnline: true,
+          kycStatus: 'NOT_SUBMITTED',
+          isOnline: false,
           walletBalance: 0,
           completedTrips: 0,
           bikeNumber: 'BIKE-REG',
@@ -644,7 +645,7 @@ function forgotPassword(req, res) {
     console.log(`📩 [IND food Password Reset Service]`);
     console.log(`To: ${cleanEmail}`);
     console.log(`Subject: IND food Password Reset Code`);
-    console.log(`Reset Code: [ ${otp} ]`);
+    console.log(`Reset Code: [ REDACTED ]`);
     console.log(`======================================================\n`);
 
     const resetHtml = `
@@ -678,7 +679,6 @@ function forgotPassword(req, res) {
     return res.json({
       success: true,
       message: `Password reset OTP ${cleanEmail} par bhej diya gaya hai!`,
-      otp,
       brand: 'IND food'
     });
   } catch (err) {
@@ -734,6 +734,9 @@ function loginOrRegister(req, res) {
   }
 
   const cleanPhone = phone.toString().trim().replace(/\D/g, '').slice(-10);
+  if (!cleanPhone || cleanPhone.length < 10) {
+    return res.status(400).json({ success: false, message: 'Valid 10-digit phone number is required' });
+  }
   const db = readDb();
   let user = db.users.find(u => u.phone === cleanPhone);
 
@@ -751,22 +754,40 @@ function loginOrRegister(req, res) {
   }
 
   let riderInfo = db.riders.find(r => r.userId === user.id || r.phone === cleanPhone);
-  if (role === 'rider' && !riderInfo) {
-    riderInfo = {
-      userId: user.id,
-      phone: cleanPhone,
-      email: user.email,
-      name: user.name,
-      permanentRiderId: generatePermanentRiderId(user.name),
-      kycStatus: 'APPROVED',
-      isOnline: true,
-      walletBalance: 0,
-      completedTrips: 0,
-      bikeNumber: 'BIKE-REG',
-      createdAt: new Date().toISOString()
-    };
-    db.riders.push(riderInfo);
-    writeDb(db);
+  if (role === 'rider') {
+    if (!riderInfo) {
+      riderInfo = {
+        userId: user.id,
+        phone: cleanPhone,
+        email: user.email,
+        name: user.name,
+        permanentRiderId: generatePermanentRiderId(user.name),
+        kycStatus: 'NOT_SUBMITTED',
+        isOnline: false,
+        walletBalance: 0,
+        completedTrips: 0,
+        bikeNumber: 'BIKE-REG',
+        createdAt: new Date().toISOString()
+      };
+      db.riders.push(riderInfo);
+      if (!user.permanentRiderId) {
+        user.permanentRiderId = riderInfo.permanentRiderId;
+      }
+      writeDb(db);
+    } else {
+      let updated = false;
+      if (!riderInfo.kycStatus) {
+        riderInfo.kycStatus = 'NOT_SUBMITTED';
+        updated = true;
+      }
+      if (!user.permanentRiderId && riderInfo.permanentRiderId) {
+        user.permanentRiderId = riderInfo.permanentRiderId;
+        updated = true;
+      }
+      if (updated) {
+        writeDb(db);
+      }
+    }
   }
 
   let restaurant = null;
@@ -822,6 +843,27 @@ function getUserProfile(req, res) {
   });
 }
 
+function logout(req, res) {
+  const authHeader = req.headers['authorization'] || '';
+  const token = authHeader.startsWith('Bearer ')
+    ? authHeader.slice(7).trim()
+    : (req.headers['x-auth-token'] || req.body?.token || '');
+
+  if (!token) {
+    return res.status(400).json({
+      success: false,
+      message: 'No authorization token provided for logout.'
+    });
+  }
+
+  const result = sessionManager.revokeToken(token, req.io);
+  return res.json({
+    success: true,
+    message: 'User logged out successfully. Session token revoked.',
+    disconnectedSockets: result.disconnectedSockets || 0
+  });
+}
+
 module.exports = {
   sendEmailOtp,
   verifyOtp,
@@ -835,5 +877,6 @@ module.exports = {
   resetPassword,
   loginOrRegister,
   getUserProfile,
-  generateUserJwt
+  generateUserJwt,
+  logout
 };

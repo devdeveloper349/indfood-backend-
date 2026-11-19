@@ -3,6 +3,7 @@ const { readDb, writeDb } = require('../models/db');
 const { generatePermanentRiderId } = require('../utils/idGenerator');
 const { generateUserJwt, verifyServerOtp } = require('./authController');
 const { getJwtSecret } = require('../config/jwt');
+const sessionManager = require('../services/sessionManager');
 
 /**
  * Calculate exact age from Date of Birth
@@ -37,7 +38,7 @@ const inFlightToggles = new Set();
  * 6. Bike / Vehicle Number
  */
 async function submitKyc(req, res) {
-  const { userId, name, mobileNumber, phone, panNumber, aadhaarNumber, dob, selfiePhoto, bikeNumber, vehicleNumber } = req.body;
+  const { userId, name, mobileNumber, phone, panNumber, aadhaarNumber, dob, selfiePhoto, bikeNumber, vehicleNumber, vehicleType, drivingLicense, dlPhoto, bankDetails, address, city, pincode } = req.body;
   const riderName = (name || '').trim();
   const riderPhone = (mobileNumber || phone || '').toString().trim();
   const riderPan = (panNumber || aadhaarNumber || '').toString().trim().toUpperCase();
@@ -144,15 +145,17 @@ async function submitKyc(req, res) {
       if (token) {
         try {
           const decoded = jwt.verify(token, getJwtSecret());
-          const validRoles = ['rider', 'admin'];
-          const matchesExistingRecord = Boolean(
-            (decoded.phone && String(decoded.phone).replace(/\D/g, '').slice(-10) === cleanPhone) ||
-            (existingRiderByPhone && decoded.id && decoded.id === existingRiderByPhone.userId) ||
-            (existingRiderByPhone && decoded.permanentRiderId && decoded.permanentRiderId === existingRiderByPhone.permanentRiderId) ||
-            (existingUserByPhone && decoded.id && decoded.id === existingUserByPhone.id)
-          );
-          if (decoded && validRoles.includes(decoded.role) && (matchesExistingRecord || decoded.role === 'admin')) {
-            isAuthenticated = true;
+          if (!sessionManager.isTokenRevoked(token, decoded)) {
+            const validRoles = ['rider', 'admin'];
+            const matchesExistingRecord = Boolean(
+              (decoded.phone && String(decoded.phone).replace(/\D/g, '').slice(-10) === cleanPhone) ||
+              (existingRiderByPhone && decoded.id && decoded.id === existingRiderByPhone.userId) ||
+              (existingRiderByPhone && decoded.permanentRiderId && decoded.permanentRiderId === existingRiderByPhone.permanentRiderId) ||
+              (existingUserByPhone && decoded.id && decoded.id === existingUserByPhone.id)
+            );
+            if (decoded && validRoles.includes(decoded.role) && (matchesExistingRecord || decoded.role === 'admin')) {
+              isAuthenticated = true;
+            }
           }
         } catch (e) {
           // Token invalid or expired
@@ -187,8 +190,8 @@ async function submitKyc(req, res) {
         phone: cleanPhone,
         name: riderName,
         permanentRiderId: null,
-        kycStatus: 'APPROVED',
-        isOnline: true,
+        kycStatus: 'PENDING',
+        isOnline: false,
         walletBalance: 0,
         completedTrips: 0,
         createdAt: new Date().toISOString()
@@ -205,6 +208,13 @@ async function submitKyc(req, res) {
     if (riderSelfie) {
       rider.selfiePhoto = riderSelfie;
     }
+    if (vehicleType) rider.vehicleType = vehicleType;
+    if (drivingLicense) rider.drivingLicense = drivingLicense;
+    if (dlPhoto) rider.dlPhoto = dlPhoto;
+    if (bankDetails) rider.bankDetails = bankDetails;
+    if (address) rider.address = address;
+    if (city) rider.city = city;
+    if (pincode) rider.pincode = pincode;
     rider.isBlocked = rider.isBlocked || false;
 
     // Auto-generate official 12-char permanent ID tied to their name (guaranteed collision-free across riders & users)
@@ -219,16 +229,30 @@ async function submitKyc(req, res) {
       rider.permanentRiderId = newId;
     }
 
-    rider.kycStatus = 'APPROVED';
-    rider.kycApprovedAt = new Date().toISOString();
+    // Preserve existing APPROVED status; new or re-submitted applications remain PENDING Admin review
+    if (rider.kycStatus !== 'APPROVED') {
+      rider.kycStatus = 'PENDING';
+      rider.isOnline = false;
+      rider.rejectionReason = null;
+    }
 
     rider.kycDocuments = {
       mobileNumber: cleanPhone,
       panNumber: riderPan,
+      aadhaarNumber: riderPan,
+      drivingLicense: rider.drivingLicense || riderPan,
+      vehicleType: rider.vehicleType || 'Bike',
+      bikeNumber: rider.bikeNumber,
       dob: riderDob,
       age: age,
-      bikeNumber: rider.bikeNumber,
+      address: rider.address || '',
+      city: rider.city || '',
+      pincode: rider.pincode || '',
+      bankDetails: rider.bankDetails || null,
       hasSelfie: Boolean(rider.selfiePhoto),
+      selfieUrl: rider.selfiePhoto || null,
+      hasDlPhoto: Boolean(rider.dlPhoto),
+      dlPhotoUrl: rider.dlPhoto || null,
       submittedAt: new Date().toISOString()
     };
 
@@ -266,10 +290,36 @@ async function submitKyc(req, res) {
       permanentRiderId: rider.permanentRiderId
     });
 
+    const isApproved = rider.kycStatus === 'APPROVED';
+
+    if (req.io) {
+      const submissionEvent = {
+        phone: rider.phone,
+        userId: rider.userId,
+        name: rider.name,
+        permanentRiderId: rider.permanentRiderId,
+        kycStatus: rider.kycStatus,
+        isApproved: isApproved
+      };
+      req.io.to('admin_room').emit('admin_kyc_submitted', submissionEvent);
+      if (cleanPhone) {
+        req.io.to(`rider_${cleanPhone}`).emit('rider_status_changed', submissionEvent);
+      }
+      if (rider.permanentRiderId) {
+        req.io.to(`rider_${rider.permanentRiderId}`).emit('rider_status_changed', submissionEvent);
+      }
+      if (rider.userId) {
+        req.io.to(`rider_${rider.userId}`).emit('rider_status_changed', submissionEvent);
+      }
+    }
+
     const responsePayload = {
       success: true,
-      message: `KYC & 18+ Identity Verified! Permanent Delivery Partner ID: ${rider.permanentRiderId}`,
+      message: isApproved
+        ? `KYC & 18+ Identity Verified! Permanent Delivery Partner ID: ${rider.permanentRiderId}`
+        : `KYC submitted successfully! Application is PENDING Admin verification. Permanent Partner ID: ${rider.permanentRiderId}`,
       permanentRiderId: rider.permanentRiderId,
+      kycStatus: rider.kycStatus,
       rider,
       token
     };
@@ -290,14 +340,24 @@ async function submitKyc(req, res) {
 function getRiderStatus(req, res) {
   const { userId, phone } = req.query;
   const db = readDb();
-  const rider = db.riders.find(r => (userId && r.userId === userId) || (phone && r.phone === phone.toString().trim()));
+  const cleanPhone = phone ? phone.toString().trim().replace(/\D/g, '').slice(-10) : '';
+  const rider = (db.riders || []).find(r =>
+    (userId && (r.userId === userId || r.permanentRiderId === userId)) ||
+    (cleanPhone && r.phone && r.phone.toString().trim().replace(/\D/g, '').slice(-10) === cleanPhone)
+  );
   if (!rider) {
     return res.status(404).json({ success: false, message: 'Rider not found' });
   }
+  const kycStatus = rider.kycStatus || 'NOT_SUBMITTED';
+  const isApproved = (kycStatus === 'APPROVED');
   return res.json({
     success: true,
-    rider,
-    isApproved: rider.kycStatus === 'APPROVED' || Boolean(rider.permanentRiderId),
+    rider: {
+      ...rider,
+      kycStatus
+    },
+    kycStatus,
+    isApproved,
     permanentRiderId: rider.permanentRiderId || null
   });
 }
@@ -329,8 +389,39 @@ function approveKyc(req, res) {
 
   rider.kycStatus = 'APPROVED';
   rider.kycApprovedAt = new Date().toISOString();
+  rider.rejectionReason = null;
 
   writeDb(db);
+
+  if (req.io) {
+    const statusPayload = {
+      phone: rider.phone,
+      userId: rider.userId,
+      permanentRiderId: rider.permanentRiderId,
+      kycStatus: 'APPROVED',
+      isApproved: true
+    };
+    const approvedPayload = {
+      phone: rider.phone,
+      userId: rider.userId,
+      permanentRiderId: rider.permanentRiderId
+    };
+
+    const cleanPhone = rider.phone ? String(rider.phone).replace(/\D/g, '').slice(-10) : '';
+    if (cleanPhone) {
+      req.io.to(`rider_${cleanPhone}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${cleanPhone}`).emit('rider_kyc_approved', approvedPayload);
+    }
+    if (rider.permanentRiderId) {
+      req.io.to(`rider_${rider.permanentRiderId}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${rider.permanentRiderId}`).emit('rider_kyc_approved', approvedPayload);
+    }
+    if (rider.userId) {
+      req.io.to(`rider_${rider.userId}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${rider.userId}`).emit('rider_kyc_approved', approvedPayload);
+    }
+    req.io.to('admin_room').emit('admin_kyc_updated', statusPayload);
+  }
 
   return res.json({
     success: true,
@@ -352,10 +443,11 @@ function riderLogin(req, res) {
   const db = readDb();
 
   // Strict Account Overwrite Guard: Customer, Admin & Restaurant accounts cannot log in as Rider
+  const existingRider = (db.riders || []).find(r => (r.phone && r.phone.toString().replace(/\D/g, '').slice(-10) === cleanPhone));
   const existingUser = (db.users || []).find(u => u.phone && String(u.phone).replace(/\D/g, '').slice(-10) === cleanPhone);
   const existingCustomerOrder = (db.orders || []).find(o => o.customerPhone && String(o.customerPhone).replace(/\D/g, '').slice(-10) === cleanPhone);
 
-  const isCustUser = (existingUser && existingUser.role === 'customer') || (!existingUser && existingCustomerOrder);
+  const isCustUser = (existingUser && existingUser.role === 'customer') || (!existingUser && !existingRider && existingCustomerOrder);
   const isAdminUser = existingUser && existingUser.role === 'admin';
   const isRestUser = existingUser && existingUser.role === 'restaurant';
 
@@ -429,17 +521,54 @@ function riderLogin(req, res) {
  * Admin rejects Rider KYC
  */
 function rejectKyc(req, res) {
-  const { userId, phone, reason } = req.body;
+  const { userId, phone, reason, rejectionReason } = req.body;
   const db = readDb();
   const rider = db.riders.find(r => (userId && r.userId === userId) || (phone && r.phone === phone));
   if (!rider) {
     return res.status(404).json({ success: false, message: 'Rider profile not found' });
   }
 
+  const actualReason = rejectionReason || reason || 'Documents invalid or unclear';
   rider.kycStatus = 'REJECTED';
-  rider.rejectionReason = reason || 'Documents invalid or unclear';
+  rider.rejectionReason = actualReason;
+  rider.kycRejectionReason = actualReason;
+  rider.isOnline = false;
 
   writeDb(db);
+  sessionManager.disconnectSocketsForUser(rider.userId, req.io);
+  sessionManager.disconnectSocketsForUser(rider.permanentRiderId, req.io);
+
+  if (req.io) {
+    const statusPayload = {
+      phone: rider.phone,
+      userId: rider.userId,
+      permanentRiderId: rider.permanentRiderId,
+      kycStatus: 'REJECTED',
+      isApproved: false,
+      rejectionReason: rider.rejectionReason
+    };
+    const rejectedPayload = {
+      phone: rider.phone,
+      userId: rider.userId,
+      permanentRiderId: rider.permanentRiderId,
+      rejectionReason: rider.rejectionReason
+    };
+
+    const cleanPhone = rider.phone ? String(rider.phone).replace(/\D/g, '').slice(-10) : '';
+    if (cleanPhone) {
+      req.io.to(`rider_${cleanPhone}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${cleanPhone}`).emit('rider_kyc_rejected', rejectedPayload);
+    }
+    if (rider.permanentRiderId) {
+      req.io.to(`rider_${rider.permanentRiderId}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${rider.permanentRiderId}`).emit('rider_kyc_rejected', rejectedPayload);
+    }
+    if (rider.userId) {
+      req.io.to(`rider_${rider.userId}`).emit('rider_status_changed', statusPayload);
+      req.io.to(`rider_${rider.userId}`).emit('rider_kyc_rejected', rejectedPayload);
+    }
+    req.io.to('admin_room').emit('admin_kyc_updated', statusPayload);
+  }
 
   return res.json({
     success: true,
@@ -453,7 +582,7 @@ function rejectKyc(req, res) {
  */
 function getPendingKycList(req, res) {
   const db = readDb();
-  const pending = db.riders.filter(r => (r.kycStatus === 'SUBMITTED' || r.kycStatus === 'PENDING') && !r.permanentRiderId);
+  const pending = db.riders.filter(r => (r.kycStatus === 'SUBMITTED' || r.kycStatus === 'PENDING'));
   return res.json({ success: true, pending });
 }
 
@@ -473,6 +602,9 @@ function getRiderDashboardStats(req, res) {
   if (token) {
     try {
       const decoded = jwt.verify(token, getJwtSecret());
+      if (sessionManager.isTokenRevoked(token, decoded)) {
+        return res.status(401).json({ success: false, message: 'Invalid or revoked authentication token' });
+      }
       if (decoded && (decoded.role === 'rider' || decoded.role === 'admin')) {
         authenticatedRider = decoded;
       } else {
@@ -710,6 +842,9 @@ function toggleRiderOnlineStatus(req, res) {
   if (token) {
     try {
       const decoded = jwt.verify(token, getJwtSecret());
+      if (sessionManager.isTokenRevoked(token, decoded)) {
+        return res.status(401).json({ success: false, message: 'Invalid or revoked authentication token' });
+      }
       if (decoded && (decoded.role === 'rider' || decoded.role === 'admin')) {
         authenticatedRider = decoded;
       } else {
@@ -754,6 +889,18 @@ function toggleRiderOnlineStatus(req, res) {
     return res.status(404).json({ success: false, message: 'Rider not found' });
   }
 
+  // 1. Blocked Rider Enforcement: Blocked riders cannot go online
+  if (rider.isBlocked) {
+    if (rider.isOnline) {
+      rider.isOnline = false;
+      writeDb(db);
+    }
+    return res.status(403).json({
+      success: false,
+      message: 'Access denied: Blocked delivery partners cannot go online. Please contact INDFood Admin.'
+    });
+  }
+
   // Prevent duplicate concurrent requests (in-flight mutex per rider)
   const riderKey = rider.permanentRiderId || rider.userId || rider.phone;
   if (inFlightToggles.has(riderKey)) {
@@ -764,6 +911,15 @@ function toggleRiderOnlineStatus(req, res) {
   try {
     // Update status
     const targetOnline = (isOnline !== undefined) ? Boolean(isOnline) : !rider.isOnline;
+
+    // 2. KYC Approval Guard: Only Admin-approved riders can go online
+    if (targetOnline && rider.kycStatus !== 'APPROVED') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied: Delivery partner KYC must be approved by Admin before going online.'
+      });
+    }
+
     rider.isOnline = targetOnline;
     writeDb(db);
 
